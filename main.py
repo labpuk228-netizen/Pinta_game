@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 
 from config import BOT_TOKEN
 from database import init_db
-from handlers import start, profile, jobs, transfers, admin
+from handlers import start, profile, jobs, transfers, admin, property, education, top
 from tasks.scheduler import start_scheduler
 
 
@@ -36,10 +36,13 @@ async def main():
     dp.include_router(jobs.router)
     dp.include_router(transfers.router)
     dp.include_router(admin.router)
+    dp.include_router(property.router)
+    dp.include_router(education.router)
+    dp.include_router(top.router)
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен...")
+    print("Бот Пихта запущен (Этап 2)...")
     await dp.start_polling(bot)
 
 
