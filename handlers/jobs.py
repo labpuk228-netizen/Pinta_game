@@ -61,13 +61,15 @@ async def take_job(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title, salary, req_edu, req_prop FROM jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
-        # Проверка: player[7] - образование, player[6] - жилье
-        if player[7] < job[2]:
+        
+        # ИСПРАВЛЕНО: edu - это 8, prop - это 7
+        if player[8] < job[2]:
             await callback.answer("Не хватает образования! Загляни в раздел 🎓 Образование.", show_alert=True)
             return
-        if player[6] < job[3]:
+        if player[7] < job[3]:
             await callback.answer("Твоё жильё слишком плохое для этой работы!", show_alert=True)
             return
+            
         await db.execute("UPDATE players SET job_salary=? WHERE user_id=?", (job[1], callback.from_user.id))
         await db.commit()
     await callback.message.edit_text(f"✅ Ты устроился на работу: **{job[0]}**!\nЗарплата будет приходить каждые 5 минут.", parse_mode="Markdown")
@@ -86,8 +88,10 @@ async def list_side_jobs(message: Message):
     
     for j in jobs:
         can_do, status = True, []
-        if player[7] < j[5]: can_do = False; status.append(f"🎓{j[5]}")
-        if player[6] < j[6]: can_do = False; status.append(f"🏠{j[6]}")
+        # ИСПРАВЛЕНО: edu - это 8, prop - это 7
+        if player[8] < j[5]: can_do = False; status.append(f"🎓{j[5]}")
+        if player[7] < j[6]: can_do = False; status.append(f"🏠{j[6]}")
+        
         if j[7] and can_do:
             last = datetime.strptime(j[7], "%Y-%m-%d %H:%M:%S")
             if now - last < timedelta(minutes=j[4]):
@@ -113,4 +117,4 @@ async def do_side(callback: CallbackQuery):
         await db.execute("INSERT OR REPLACE INTO side_cooldowns VALUES (?, ?, CURRENT_TIMESTAMP)", (callback.from_user.id, job_id))
         await db.commit()
     await callback.answer(f"💪 Заработано {earn} монет!", show_alert=True)
-    await callback.message.delete() # Удаляем старое сообщение, чтобы не спамить
+    await callback.message.delete()
