@@ -8,7 +8,7 @@ router = Router()
 @router.message(F.text == "🎓 Образование")
 async def show_education(message: Message):
     player = await get_player(message.from_user.id)
-    current_edu = player[7]
+    current_edu = player[8] # ИСПРАВЛЕНО: 8
     
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT id, title, cost, level FROM educations") as cur:
