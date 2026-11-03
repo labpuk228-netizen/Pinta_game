@@ -8,22 +8,23 @@ router = Router()
 @router.message(F.text == "🎓 Образование")
 async def show_education(message: Message):
     player = await get_player(message.from_user.id)
-    if not player: return
-    current_edu = player[8] if len(player) > 8 else 0
-
+    current_edu = player[7]
+    
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT id, title, cost, level FROM educations") as cur:
             edus = await cur.fetchall()
 
     text = f"🎓 **Образование**\nТвой текущий уровень: {current_edu}\n\n"
-    keyboard = []
+    kb = []
     
     for e in edus:
-        text += f"**{e[1]}** — Цена: {e[2]} монет (Уровень {e[3]})\n"
-        if current_edu < e[3]:
-            keyboard.append([InlineKeyboardButton(text=f"Купить: {e[1]}", callback_data=f"study_{e[0]}")])
+        if current_edu >= e[3]:
+            text += f"✅ **{e[1]}** (Уровень {e[3]}) — изучено\n"
+        else:
+            text += f"**{e[1]}** — Цена: {e[2]} монет (Уровень {e[3]})\n"
+            kb.append([InlineKeyboardButton(text=f"Купить: {e[1]}", callback_data=f"study_{e[0]}")])
     
-    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard) if keyboard else None
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=kb) if kb else None
     await message.answer(text, parse_mode="Markdown", reply_markup=reply_markup)
 
 @router.callback_query(F.data.startswith("study_"))
