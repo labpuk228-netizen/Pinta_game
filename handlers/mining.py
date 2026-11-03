@@ -56,6 +56,52 @@ async def withdraw_crypto(message: Message):
         
     await message.answer(f"✅ Выведено в портфель:\n🪙 BTC: {btc:.6f}\n🪙 ETH: {eth:.6f}\n🪙 DOGE: {doge:.4f}\n\nТеперь ты можешь продать их на Бирже.")
 
+# --- ПРОДАЖА ДЕТАЛЕЙ ---
+@router.message(F.text.contains("Продать детали"))
+async def sell_parts_menu(message: Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT sp.id, sp.name, i.amount, i.cond, sp.price FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id WHERE i.user_id=?", (message.from_user.id,)) as cur:
+            items = await cur.fetchall()
+            
+    if not items:
+        await message.answer("📦 Твой инвентарь пуст.")
+        return
+        
+    text = "💸 **Продажа деталей**\n\n"
+    kb = []
+    for i in items:
+        # Цена продажи: 50% от рыночной стоимости, умноженные на процент износа
+        sell_price = int(i[4] * 0.5 * (i[3] / 100.0))
+        text += f"▪️ **{i[1]}** (x{i[2]})\nСостояние: {i[3]:.1f}% | Продажа за 1 шт: {sell_price} 💰\n\n"
+        kb.append([InlineKeyboardButton(text=f"Продать {i[1]} (+{sell_price}💰)", callback_data=f"sellpart_{i[0]}")])
+        
+    await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+@router.callback_query(F.data.startswith("sellpart_"))
+async def sell_part(callback: CallbackQuery):
+    part_id = int(callback.data.split("_")[1])
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT i.amount, i.cond, sp.price, sp.name FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id WHERE i.user_id=? AND i.part_id=?", (callback.from_user.id, part_id)) as cur:
+            row = await cur.fetchone()
+            
+        if not row or row[0] <= 0:
+            await callback.answer("У тебя нет этой детали.", show_alert=True)
+            return
+            
+        amount, cond, base_price, name = row
+        sell_price = int(base_price * 0.5 * (cond / 100.0))
+        
+        await db.execute("UPDATE mining_inventory SET amount = amount - 1 WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id))
+        await db.execute("DELETE FROM mining_inventory WHERE amount <= 0")
+        await db.execute("UPDATE players SET balance = balance + ? WHERE user_id=?", (sell_price, callback.from_user.id))
+        await db.commit()
+        
+    await callback.answer(f"✅ Продано 1 {name} за {sell_price} монет!", show_alert=True)
+    try: await callback.message.delete()
+    except: pass
+
+# ... (ОСТАЛЬНОЙ КОД МАЙНИНГА С ИЗМЕНЕННЫМ СНЯТИЕМ ДЕТАЛЕЙ)
 @router.message(F.text.contains("Сменить монету"))
 async def change_coin_menu(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -122,7 +168,8 @@ async def buy_part(callback: CallbackQuery):
             await callback.message.answer("❌ Недостаточно монет!")
             return
         await db.execute("UPDATE players SET balance = balance - ? WHERE user_id=?", (part[1], callback.from_user.id))
-        await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, 1) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
+        # Добавляем новую деталь в инвентарь со 100% состоянием
+        await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
         await db.commit()
     await callback.answer()
     await callback.message.answer(f"✅ Куплено: {part[0]}")
@@ -275,66 +322,28 @@ async def remove_part(callback: CallbackQuery):
         
         async with aiosqlite.connect(DB_PATH) as db:
             if ptype in ("mb", "psu", "cpu"):
-                async with db.execute(f"SELECT {ptype}_id FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
+                async with db.execute(f"SELECT {ptype}_id, {ptype}_cond FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
                     row = await cur.fetchone()
                     part_id = row[0] if row else 0
+                    cond = row[1] if row else 100.0
                     
                 if part_id:
                     await db.execute(f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?", (rig_id,))
-                    await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, 1) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
+                    # ВОЗВРАЩАЕМ В ИНВЕНТАРЬ С СОХРАНЕНИЕМ ИЗНОСА
+                    async with db.execute("SELECT amount, cond FROM mining_inventory WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id)) as cur:
+                        inv = await cur.fetchone()
+                    if inv:
+                        new_amount = inv[0] + 1
+                        avg_cond = (inv[0] * inv[1] + cond) / new_amount
+                        await db.execute("UPDATE mining_inventory SET amount=?, cond=? WHERE user_id=? AND part_id=?", (new_amount, avg_cond, callback.from_user.id, part_id))
+                    else:
+                        await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount, cond) VALUES (?, ?, 1, ?)", (callback.from_user.id, part_id, cond))
+                        
             elif ptype == "gpu":
                 part_id = int(parts[3])
-                async with db.execute("SELECT amount FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id)) as cur:
+                async with db.execute("SELECT amount, cond FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id)) as cur:
                     row = await cur.fetchone()
                     amt = row[0] if row else 0
+                    cond = row[1] if row else 100.0
                     
-                if amt > 0:
-                    await db.execute("DELETE FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id))
-                    await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, ?) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + ?", (callback.from_user.id, part_id, amt, amt))
-            await db.commit()
-            
-        await callback.message.answer("✅ Деталь снята и возвращена в инвентарь!")
-        await _render_rig_config(callback, rig_id)
-    except Exception as e:
-        await callback.message.answer(f"Ошибка при снятии: {e}")
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("install_menu_"))
-async def install_part_menu(callback: CallbackQuery):
-    try:
-        rig_id = int(callback.data.split("_")[2])
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT sp.id, sp.name, sp.part_type, i.amount FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id WHERE i.user_id=? AND sp.part_type != 'case'", (callback.from_user.id,)) as cur:
-                items = await cur.fetchall()
-        if not items:
-            await callback.message.answer("❌ У тебя нет деталей в инвентаре!")
-            await callback.answer()
-            return
-        kb = [[InlineKeyboardButton(text=f"[{i[2].upper()}] {i[1]} (x{i[3]})", callback_data=f"do_install_{rig_id}_{i[0]}")] for i in items]
-        kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")])
-        await callback.message.edit_text("Выбери деталь для установки:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-    except Exception as e:
-        await callback.message.answer(f"Ошибка: {e}")
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("do_install_"))
-async def do_install(callback: CallbackQuery):
-    try:
-        _, _, rig_id, part_id = callback.data.split("_")
-        rig_id, part_id = int(rig_id), int(part_id)
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT part_type, name FROM mining_shop WHERE id=?", (part_id,)) as cur:
-                part = await cur.fetchone()
-            ptype = part[0]
-            if ptype == 'gpu':
-                await db.execute("INSERT INTO mining_rig_gpus (rig_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) ON CONFLICT(rig_id, part_id) DO UPDATE SET amount = amount + 1", (rig_id, part_id))
-            elif ptype in ('mb', 'psu', 'cpu'):
-                await db.execute(f"UPDATE mining_rigs SET {ptype}_id=?, {ptype}_cond=100.0 WHERE id=?", (part_id, rig_id))
-            await db.execute("UPDATE mining_inventory SET amount = amount - 1 WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id))
-            await db.execute("DELETE FROM mining_inventory WHERE amount <= 0")
-            await db.commit()
-        await callback.message.answer(f"✅ {part[1]} установлен!")
-        await _render_rig_config(callback, rig_id)
-    except Exception as e:
-        await callback.message.answer(f"Ошибка установки: {e}")
-    await callback.answer()
+             
