@@ -39,13 +39,13 @@ async def crime_hub(message: Message, state: FSMContext):
 @router.message(F.text.contains("Черный рынок"))
 async def black_market(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Купить Отмычки (1000💰)", callback_data="buy_lockpicks")],
-        [InlineKeyboardButton(text="Купить Хакерский софт (5000💰)", callback_data="buy_hacker")],
-        [InlineKeyboardButton(text="Купить Охрану (5000💰)", callback_data="buy_security")]
+        [InlineKeyboardButton(text="Купить Отмычки (1000💰)", callback_data="crimebuy_lockpicks")], # ИСПРАВЛЕНО
+        [InlineKeyboardButton(text="Купить Хакерский софт (5000💰)", callback_data="crimebuy_hacker")], # ИСПРАВЛЕНО
+        [InlineKeyboardButton(text="Купить Охрану (5000💰)", callback_data="crimebuy_security")] # ИСПРАВЛЕНО
     ])
     await message.answer("🛒 **Черный рынок**\n\nЗдесь продаются инструменты для незаконных дел. Без них кражи невозможны!", reply_markup=kb)
 
-@router.callback_query(F.data.startswith("buy_"))
+@router.callback_query(F.data.startswith("crimebuy_")) # ИСПРАВЛЕНО
 async def buy_crime_item(callback: CallbackQuery):
     item = callback.data.split("_")[1]
     player = await get_player(callback.from_user.id)
