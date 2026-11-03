@@ -18,7 +18,8 @@ async def init_db():
             property_id INTEGER DEFAULT 0,
             education_level INTEGER DEFAULT 0,
             business_id INTEGER DEFAULT 0,
-            last_side_job TIMESTAMP
+            last_side_job TIMESTAMP,
+            last_fortune TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +57,8 @@ async def init_db():
             "property_id INTEGER DEFAULT 0", 
             "education_level INTEGER DEFAULT 0", 
             "business_id INTEGER DEFAULT 0",
-            "last_side_job TIMESTAMP"
+            "last_side_job TIMESTAMP",
+            "last_fortune TIMESTAMP"
         ]
         for col in columns:
             try:
@@ -64,13 +66,12 @@ async def init_db():
             except aiosqlite.OperationalError:
                 pass
 
-        # Миграция для таблицы jobs (добавляем required_property)
         try:
             await db.execute("ALTER TABLE jobs ADD COLUMN required_property INTEGER DEFAULT 0")
         except aiosqlite.OperationalError:
             pass
 
-        # Базовые работы: (id, title, salary, req_edu, req_property)
+        # Базовые работы
         await db.execute("INSERT OR IGNORE INTO jobs (id, title, salary, required_education, required_property) VALUES (1, 'Курьер', 200, 0, 0)")
         await db.execute("INSERT OR IGNORE INTO jobs (id, title, salary, required_education, required_property) VALUES (2, 'Грузчик', 150, 0, 0)")
         await db.execute("INSERT OR IGNORE INTO jobs (id, title, salary, required_education, required_property) VALUES (3, 'Сантехник', 450, 1, 1)")
