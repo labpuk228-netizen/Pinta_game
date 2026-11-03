@@ -17,6 +17,6 @@ async def show_top(message: Message):
 
     text = "🏆 **Топ-10 богачей:**\n\n"
     for i, r in enumerate(rows, 1):
-        name = f"@{r[0]}" if r[0] != "player" else "Игрок"
+        name = f"@{r[0]}" if r[0] and r[0] != "player" else "Игрок"
         text += f"{i}. {name} — {r[1]} монет\n"
     await message.answer(text, parse_mode="Markdown")
