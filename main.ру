@@ -6,7 +6,7 @@ from database import init_db
 from handlers import (
     start, common, profile, jobs, education, property, 
     business, mining, market, casino, social, crime, 
-    top, faq, checkup # <-- ВОТ ОНИ, ТЕПЕРЬ ПОДКЛЮЧЕНЫ
+    top, faq, checkup
 )
 from tasks.scheduler import start_scheduler
 
@@ -37,7 +37,7 @@ async def main():
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Финальная сборка всех модулей)...")
+    print("Бот Пихта запущен (Финальная сборка)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
