@@ -13,6 +13,3 @@ class OrderState(StatesGroup):
 
 class CasinoState(StatesGroup):
     waiting_bet = State()
-
-class DiceState(StatesGroup):
-    waiting_bet = State()
