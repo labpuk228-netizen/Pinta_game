@@ -33,8 +33,8 @@ async def render_jobs(target, page):
     
     for j in page_jobs:
         req = []
-        if j[3] > 0: req.append(f"🎓 Обр. {j[3]}")
-        if j[4] > 0: req.append(f"🏠 Жильё {j[4]}")
+        if j[3] > 0: req.append(f"🎓 Обр. Ур.{j[3]}")
+        if j[4] > 0: req.append(f"🏠 Жильё Ур.{j[4]}")
         req_t = ", ".join(req) if req else "Без требований"
         text += f"**{j[1]}** — {j[2]} 💰 (Нужно: {req_t})\n"
         kb.append([InlineKeyboardButton(text=f"Устроиться: {j[1]}", callback_data=f"takejob_{j[0]}")])
@@ -62,12 +62,11 @@ async def take_job(callback: CallbackQuery):
         async with db.execute("SELECT title, salary, req_edu, req_prop FROM jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
         
-        # ИСПРАВЛЕНО: edu - это 8, prop - это 7
         if player[8] < job[2]:
-            await callback.answer("Не хватает образования! Загляни в раздел 🎓 Образование.", show_alert=True)
+            await callback.answer(f"Не хватает образования! Нужен Ур. {job[2]}.", show_alert=True)
             return
         if player[7] < job[3]:
-            await callback.answer("Твоё жильё слишком плохое для этой работы!", show_alert=True)
+            await callback.answer(f"Твоё жильё слишком плохое! Нужно Ур. {job[3]}.", show_alert=True)
             return
             
         await db.execute("UPDATE players SET job_salary=? WHERE user_id=?", (job[1], callback.from_user.id))
@@ -88,7 +87,6 @@ async def list_side_jobs(message: Message):
     
     for j in jobs:
         can_do, status = True, []
-        # ИСПРАВЛЕНО: edu - это 8, prop - это 7
         if player[8] < j[5]: can_do = False; status.append(f"🎓{j[5]}")
         if player[7] < j[6]: can_do = False; status.append(f"🏠{j[6]}")
         
@@ -101,8 +99,10 @@ async def list_side_jobs(message: Message):
                 
         req = f" ({', '.join(status)})" if status else ""
         text += f"**{j[1]}** — {j[2]}-{j[3]} 💰{req}\n"
+        
+        # ИСПРАВЛЕНО: Теперь на кнопке написано название работы
         if can_do:
-            kb.append([InlineKeyboardButton(text=f"Выполнить", callback_data=f"doside_{j[0]}")])
+            kb.append([InlineKeyboardButton(text=f"▶️ {j[1]}", callback_data=f"doside_{j[0]}")])
             
     await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -112,9 +112,11 @@ async def do_side(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title, min_e, max_e FROM side_jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
+            
         earn = random.randint(job[1], job[2])
         await db.execute("UPDATE players SET balance = balance + ? WHERE user_id=?", (earn, callback.from_user.id))
         await db.execute("INSERT OR REPLACE INTO side_cooldowns VALUES (?, ?, CURRENT_TIMESTAMP)", (callback.from_user.id, job_id))
         await db.commit()
-    await callback.answer(f"💪 Заработано {earn} монет!", show_alert=True)
+    
+    await callback.answer(f"💪 {job[0]}: заработано {earn} монет!", show_alert=True)
     await callback.message.delete()
