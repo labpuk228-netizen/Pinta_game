@@ -4,75 +4,139 @@ from datetime import datetime, timedelta
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database import get_player, DB_PATH
+from keyboards import section_menu
 
 router = Router()
+PAGE_SIZE = 4
 
 @router.message(F.text == "💼 Работа")
 async def show_jobs(message: Message):
-    player = await get_player(message.from_user.id)
-    if not player:
-        return
+    await _render_jobs_menu(message, 0)
+
+async def _render_jobs_menu(target, page):
+    player = await get_player(target.from_user.id)
+    if not player: return
     
     if player[4] > 0:
-        text = (
-            f"💼 **Твоя текущая работа**\n\n"
-            f"Зарплата: {player[4]} монет/цикл.\n\n"
-            f"Ты можешь подработать или уволиться, чтобы найти что-то получше."
-        )
-        keyboard = [
-            [InlineKeyboardButton(text="🛠 Подработать (быстрые деньги)", callback_data="side_job")],
+        text = f"💼 **Твоя текущая работа**\nЗарплата: {player[4]} монет/цикл."
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛠 Подработки", callback_data="side_page_0")],
             [InlineKeyboardButton(text="❌ Уволиться", callback_data="quit_job")]
-        ]
-        await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+        ])
+        if isinstance(target, Message):
+            await target.answer(text, parse_mode="Markdown", reply_markup=kb)
+        else:
+            await target.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
         return
-    
+
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT id, title, salary, required_education, required_property FROM jobs") as cur:
             jobs = await cur.fetchall()
 
-    text = "💼 **Биржа труда**\n\n"
-    keyboard = [[InlineKeyboardButton(text="🛠 Подработать (быстрые деньги)", callback_data="side_job")]]
-
-    for j in jobs:
-        req_edu, req_prop = j[3], j[4]
-        req_text = []
-        if req_edu > 0: req_text.append(f"Образование ур.{req_edu}")
-        if req_prop > 0: req_text.append(f"Жильё ур.{req_prop}")
-        if not req_text: req_text.append("Без требований")
-
-        text += f"**{j[1]}** — {j[2]} монет/цикл\n*(Требуется: {', '.join(req_text)})*\n\n"
-        keyboard.append([InlineKeyboardButton(text=f"Устроиться: {j[1]}", callback_data=f"job_{j[0]}")])
-
-    await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
-
-@router.callback_query(F.data == "side_job")
-async def process_side_job(callback: CallbackQuery):
-    player = await get_player(callback.from_user.id)
-    last_job = player[10] if len(player) > 10 else None
+    start = page * PAGE_SIZE
+    page_jobs = jobs[start:start+PAGE_SIZE]
     
-    if last_job:
-        last_time = datetime.strptime(last_job, "%Y-%m-%d %H:%M:%S")
-        now = datetime.utcnow()
-        if now - last_time < timedelta(minutes=5):
-            time_left = timedelta(minutes=5) - (now - last_time)
-            minutes = int(time_left.total_seconds() // 60)
-            seconds = int(time_left.total_seconds() % 60)
-            await callback.answer(f"Ты устал. Отдохни ещё {minutes} мин {seconds} сек.", show_alert=True)
-            return
+    text = f"💼 **Биржа труда** (стр. {page+1})\n\n"
+    kb = []
+    for j in page_jobs:
+        req_text = []
+        if j[3] > 0: req_text.append(f"🎓{j[3]}")
+        if j[4] > 0: req_text.append(f"🏠{j[4]}")
+        req = ", ".join(req_text) if req_text else "Без требований"
+        text += f"**{j[1]}** — {j[2]} 💰 ({req})\n\n"
+        kb.append([InlineKeyboardButton(text=f"Устроиться: {j[1]}", callback_data=f"job_{j[0]}")])
 
-    earnings = random.randint(80, 250)
+    nav = []
+    if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"jobs_page_{page-1}"))
+    if start + PAGE_SIZE < len(jobs): nav.append(InlineKeyboardButton(text="➡️", callback_data=f"jobs_page_{page+1}"))
+    if nav: kb.append(nav)
+    kb.append([InlineKeyboardButton(text="🛠 Подработки", callback_data="side_page_0")])
+
+    if isinstance(target, Message):
+        await target.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        await target.answer("Выбери действие:", reply_markup=section_menu())
+    else:
+        await target.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+@router.callback_query(F.data.startswith("jobs_page_"))
+async def jobs_page(callback: CallbackQuery):
+    page = int(callback.data.split("_")[2])
+    await _render_jobs_menu(callback, page)
+    await callback.answer()
+
+# --- ПОДРАБОТКИ (без алертов, с редактированием) ---
+@router.callback_query(F.data.startswith("side_page_"))
+async def show_side_jobs(callback: CallbackQuery):
+    page = int(callback.data.split("_")[2])
+    player = await get_player(callback.from_user.id)
+    edu, prop = player[7], player[6]
+    
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE players SET balance = balance + ?, last_side_job = CURRENT_TIMESTAMP WHERE user_id=?", (earnings, callback.from_user.id))
+        async with db.execute("SELECT id, title, min_earning, max_earning, cooldown_minutes, required_education, required_property, (SELECT last_done FROM side_jobs_cooldown WHERE user_id=? AND side_job_id=side_jobs.id) FROM side_jobs ORDER BY min_earning ASC", (callback.from_user.id,)) as cur:
+            jobs = await cur.fetchall()
+    
+    start = page * PAGE_SIZE
+    page_jobs = jobs[start:start+PAGE_SIZE]
+    
+    text = f"🛠 **Подработки** (стр. {page+1})\n\n"
+    kb = []
+    now = datetime.utcnow()
+    
+    for j in page_jobs:
+        can_do, status = True, []
+        if edu < j[5]: can_do = False; status.append(f"🎓{j[5]}")
+        if prop < j[6]: can_do = False; status.append(f"🏠{j[6]}")
+        
+        if j[7] and can_do:
+            last = datetime.strptime(j[7], "%Y-%m-%d %H:%M:%S")
+            cd = timedelta(minutes=j[4])
+            if now - last < cd:
+                can_do = False
+                rem = cd - (now - last)
+                status.append(f"⏳{int(rem.total_seconds()//60)}м")
+        
+        req = f" ({', '.join(status)})" if status else ""
+        text += f"**{j[1]}** — {j[2]}-{j[3]} 💰{req}\n"
+        
+        if can_do:
+            kb.append([InlineKeyboardButton(text=f"▶️ {j[1]}", callback_data=f"do_side_{j[0]}")])
+    
+    nav = []
+    if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"side_page_{page-1}"))
+    if start + PAGE_SIZE < len(jobs): nav.append(InlineKeyboardButton(text="➡️", callback_data=f"side_page_{page+1}"))
+    if nav: kb.append(nav)
+    kb.append([InlineKeyboardButton(text="⬅️ К работам", callback_data="jobs_page_0")])
+    
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("do_side_"))
+async def do_side_job(callback: CallbackQuery):
+    job_id = int(callback.data.split("_")[2])
+    player = await get_player(callback.from_user.id)
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT title, min_earning, max_earning, cooldown_minutes FROM side_jobs WHERE id=?", (job_id,)) as cur:
+            job = await cur.fetchone()
+        
+        earnings = random.randint(job[1], job[2])
+        await db.execute("UPDATE players SET balance = balance + ? WHERE user_id=?", (earnings, callback.from_user.id))
+        await db.execute("INSERT OR REPLACE INTO side_jobs_cooldown (user_id, side_job_id, last_done) VALUES (?, ?, CURRENT_TIMESTAMP)", (callback.from_user.id, job_id))
         await db.commit()
     
-    await callback.answer(f"💪 Ты успешно подработал и получил {earnings} монет!", show_alert=True)
+    # Просто перерисовываем меню, без алерта
+    await show_side_jobs(callback)
+    # И шлем короткое уведомление снизу отдельным сообщением (можно редактировать, но это баг телеграма - edit нельзя без answer)
+    # Вместо этого можно сделать так, чтобы в тексте было видно "последний заработок"
+    await callback.answer()
 
+# --- ОСТАЛЬНОЕ (уволиться, устроиться) ---
 @router.callback_query(F.data == "quit_job")
 async def quit_job(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE players SET job_salary = 0 WHERE user_id=?", (callback.from_user.id,))
         await db.commit()
-    await callback.message.edit_text("❌ Ты уволился. Теперь ты безработный. Нажми «💼 Работа» в меню, чтобы найти новую!")
+    await callback.message.edit_text("❌ Ты уволился.")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("job_"))
@@ -83,23 +147,10 @@ async def take_job_callback(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title, salary, required_education, required_property FROM jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
-            
-        if not job:
-            await callback.answer("Вакансия не найдена.", show_alert=True)
+        if player[7] < job[2] or player[6] < job[3]:
+            await callback.answer("Не хватает требований!", show_alert=True)
             return
-            
-        edu_level = player[8] if len(player) > 8 else 0
-        prop_level = player[7] if len(player) > 7 else 0
-        
-        if edu_level < job[2]:
-            await callback.answer(f"Тебе не хватает образования (нужно ур. {job[2]})!", show_alert=True)
-            return
-        if prop_level < job[3]:
-            await callback.answer(f"Твоё жильё слишком плохое для этой должности (нужно жильё ур. {job[3]})!", show_alert=True)
-            return
-            
         await db.execute("UPDATE players SET job_salary=? WHERE user_id=?", (job[1], callback.from_user.id))
         await db.commit()
-    
-    await callback.message.edit_text(f"✅ Ты устроился на работу: **{job[0]}**!\nЗарплата будет приходить пассивно.")
+    await callback.message.edit_text(f"✅ Работа: **{job[0]}**!")
     await callback.answer("Успешно!")
