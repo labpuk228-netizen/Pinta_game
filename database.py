@@ -110,10 +110,11 @@ async def init_db():
         for sj in side_jobs:
             await db.execute("INSERT OR IGNORE INTO side_jobs (id, title, min_earning, max_earning, cooldown_minutes, required_education, required_property) VALUES (?, ?, ?, ?, ?, ?, ?)", sj)
 
-        await db.execute("INSERT OR IGNORE INTO crypto_assets (symbol, name, price, volatility) VALUES ('BTC', 'Bitcoin', 50000, 0.05)")
-        await db.execute("INSERT OR IGNORE INTO crypto_assets (symbol, name, price, volatility) VALUES ('ETH', 'Ethereum', 3000, 0.07)")
-        await db.execute("INSERT OR IGNORE INTO stock_assets (symbol, name, price, volatility) VALUES ('PINTA', 'Pinta Corp', 100, 0.03)")
-        await db.execute("INSERT OR IGNORE INTO stock_assets (symbol, name, price, volatility) VALUES ('TECH', 'TechnoSoft', 500, 0.04)")
+        # КРИПТА И АКЦИИ (адекватные стартовые цены)
+        await db.execute("INSERT OR IGNORE INTO crypto_assets (symbol, name, price, volatility) VALUES ('BTC', 'Bitcoin', 500.0, 0.05)")
+        await db.execute("INSERT OR IGNORE INTO crypto_assets (symbol, name, price, volatility) VALUES ('ETH', 'Ethereum', 50.0, 0.08)")
+        await db.execute("INSERT OR IGNORE INTO stock_assets (symbol, name, price, volatility) VALUES ('PINTA', 'Pinta Corp', 100.0, 0.03)")
+        await db.execute("INSERT OR IGNORE INTO stock_assets (symbol, name, price, volatility) VALUES ('TECH', 'TechnoSoft', 250.0, 0.06)")
 
         if ADMIN_ID:
             await db.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (ADMIN_ID,))
