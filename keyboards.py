@@ -18,11 +18,13 @@ def main_menu(is_admin=False):
 
 def crime_menu():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🦹 Ограбить игрока"), KeyboardButton(text="👤 Ограбить NPC")],
-        [KeyboardButton(text="💻 Взломать банк"), KeyboardButton(text="🛡 Купить охрану")],
-        [KeyboardButton(text="⚖️ Выйти из тюрьмы"), KeyboardButton(text="⬅️ Назад в меню")]
+        [KeyboardButton(text="🛒 Черный рынок"), KeyboardButton(text="🦹 Ограбить игрока")],
+        [KeyboardButton(text="👤 Ограбить NPC"), KeyboardButton(text="💻 Взломать банк")],
+        [KeyboardButton(text="🛡 Купить охрану"), KeyboardButton(text="⚖️ Выйти из тюрьмы")],
+        [KeyboardButton(text="⬅️ Назад в меню")]
     ], resize_keyboard=True)
 
+# Остальные меню...
 def job_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📋 Вакансии"), KeyboardButton(text="🛠 Подработки")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
 def prop_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🏠 Моё жильё"), KeyboardButton(text="🏘 Вся недвижимость")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
 def biz_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🏢 Мои бизнесы"), KeyboardButton(text="💼 Купить бизнес")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
