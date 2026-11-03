@@ -31,6 +31,10 @@ async def process_cycle():
         await db.execute("UPDATE players SET crypto_btc = COALESCE(crypto_btc, 0) + (SELECT COALESCE(SUM(sp.hashrate * rg.amount), 0) * 2.0 FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id = players.user_id) WHERE mining_coin = 'BTC'")
         await db.execute("UPDATE players SET crypto_eth = COALESCE(crypto_eth, 0) + (SELECT COALESCE(SUM(sp.hashrate * rg.amount), 0) * 33.0 FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id = players.user_id) WHERE mining_coin = 'ETH'")
         await db.execute("UPDATE players SET crypto_doge = COALESCE(crypto_doge, 0) + (SELECT COALESCE(SUM(sp.hashrate * rg.amount), 0) * 10000.0 FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id = players.user_id) WHERE mining_coin = 'DOGE'")
+        
+        # Честный труд повышает репутацию
+        await db.execute("UPDATE players SET reputation = MIN(reputation + 1, 100) WHERE job_salary > 0")
+        
         await db.commit()
 
 async def change_season():
@@ -55,7 +59,6 @@ async def random_events():
             
         if not users: return
         
-        # Выбираем случайного игрока
         user_id, mining_coin = random.choice(users)
         
         events = [
@@ -92,5 +95,5 @@ def start_scheduler():
     scheduler.add_job(process_cycle, "interval", minutes=5)
     scheduler.add_job(update_prices, "interval", minutes=5)
     scheduler.add_job(random_events, "interval", minutes=15)
-    scheduler.add_job(change_season, "interval", hours=24) # Сезон меняется раз в сутки
+    scheduler.add_job(change_season, "interval", hours=24)
     scheduler.start()
