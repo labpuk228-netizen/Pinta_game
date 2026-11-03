@@ -6,7 +6,7 @@ from database import init_db
 from handlers import (
     start, common, profile, jobs, education, property, 
     business, mining, market, casino, social, crime, 
-    top, faq, checkup
+    top, faq, checkup, transfers  # <--- ТЕПЕРЬ TRANSFERS ЗДЕСЬ
 )
 from tasks.scheduler import start_scheduler
 
@@ -26,11 +26,10 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    # Подключаем абсолютно все роутеры
     routers = [
         start, common, profile, jobs, education, property, 
         business, mining, market, casino, social, crime, 
-        top, faq, checkup
+        top, faq, checkup, transfers
     ]
     for r in routers:
         dp.include_router(r.router)
