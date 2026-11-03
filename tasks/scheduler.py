@@ -9,19 +9,28 @@ async def process_cycle():
         # 1. Начисляем зарплату
         await db.execute("UPDATE players SET balance = balance + job_salary WHERE job_salary > 0")
         
-        # 2. Списываем аренду жилья (если оно съемное и есть property_id)
+        # 2. Списываем аренду жилья
         await db.execute("""
             UPDATE players 
             SET balance = balance - COALESCE((SELECT rent_cost FROM properties WHERE properties.id = players.property_id), 0)
             WHERE property_id > 0
         """)
         
-        # 3. Базовые расходы на еду и воду (например, 30 монет за цикл)
+        # 3. Доход от бизнеса минус расходы на него
+        await db.execute("""
+            UPDATE players 
+            SET balance = balance + (
+                COALESCE((SELECT passive_income FROM businesses WHERE businesses.id = players.business_id), 0) - 
+                COALESCE((SELECT upkeep_cost FROM businesses WHERE businesses.id = players.business_id), 0)
+            )
+            WHERE business_id > 0
+        """)
+        
+        # 4. Базовые расходы на еду и воду (30 монет)
         await db.execute("UPDATE players SET balance = balance - 30")
         
         await db.commit()
 
 def start_scheduler():
-    # Для теста оставляем 1 минуту. Позже поменяем на 1 час.
     scheduler.add_job(process_cycle, "interval", minutes=1)
     scheduler.start()
