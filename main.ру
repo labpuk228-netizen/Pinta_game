@@ -3,11 +3,10 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from database import init_db
-from handlers import (
-    start, common, profile, jobs, education, property, 
-    business, mining, market, casino, social, crime, 
-    top, faq, checkup, transfers  # <--- ТЕПЕРЬ TRANSFERS ЗДЕСЬ
-)
+
+# Импортируем все модули строго в одну строку, чтобы избежать ошибок с отступами
+from handlers import start, common, profile, jobs, education, property, business, mining, market, casino, social, crime, top, faq, checkup, transfers
+
 from tasks.scheduler import start_scheduler
 
 async def health(request): return web.Response(text="OK")
@@ -26,11 +25,8 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    routers = [
-        start, common, profile, jobs, education, property, 
-        business, mining, market, casino, social, crime, 
-        top, faq, checkup, transfers
-    ]
+    routers = [start, common, profile, jobs, education, property, business, mining, market, casino, social, crime, top, faq, checkup, transfers]
+    
     for r in routers:
         dp.include_router(r.router)
 
