@@ -6,11 +6,11 @@ from keyboards import market_menu
 
 router = Router()
 
-@router.message(F.text == "📈 Биржа")
+@router.message(F.text.contains("Биржа"))
 async def market_hub(message: Message):
     await message.answer("📈 **Фондовая биржа**\n\nВыбери рынок или посмотри свой портфель.", reply_markup=market_menu())
 
-@router.message(F.text == "📈 Крипта")
+@router.message(F.text.contains("Крипта"))
 async def show_crypto(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT symbol, name, price FROM crypto_assets") as cur:
@@ -26,7 +26,7 @@ async def show_crypto(message: Message):
         ])
     await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-@router.message(F.text == "📊 Акции")
+@router.message(F.text.contains("Акции"))
 async def show_stocks(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT symbol, name, price FROM stock_assets") as cur:
@@ -42,7 +42,7 @@ async def show_stocks(message: Message):
         ])
     await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-@router.message(F.text == "💼 Портфель")
+@router.message(F.text.contains("Портфель"))
 async def portfolio(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT symbol, amount FROM market_portfolio WHERE user_id=? AND amount > 0", (message.from_user.id,)) as cur:
@@ -54,7 +54,6 @@ async def portfolio(message: Message):
         
     text = "💼 **Твой портфель:**\n\n"
     for p in portfolio:
-        # Ищем цену (в крипте или акциях)
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT price FROM crypto_assets WHERE symbol=?", (p[0],)) as cur:
                 price = await cur.fetchone()
@@ -66,7 +65,24 @@ async def portfolio(message: Message):
             
     await message.answer(text, parse_mode="Markdown")
 
-# --- ТОРГОВЛЯ ---
+@router.message(F.text.contains("ордера"))
+async def my_orders(message: Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT id, action, symbol, amount, target_price FROM market_orders WHERE user_id=? AND status='active'", (message.from_user.id,)) as cur:
+            orders = await cur.fetchall()
+            
+    if not orders:
+        await message.answer("📜 **Мои ордера**\n\nУ тебя пока нет активных лимитных заявок.\n\n*Чтобы создать ордер, зайди в раздел Крипта или Акции.*")
+        return
+        
+    text = "📜 **Твои активные ордера:**\n\n"
+    for o in orders:
+        action_text = "Купить" if o[1] == "buy" else "Продать"
+        text += f"ID: {o[0]} | {action_text} {o[3]} {o[2]}\nЦена срабатывания: {o[4]:.2f} 💰\n\n"
+        
+    text += "Чтобы отменить ордер, используй кнопки ниже."
+    await message.answer(text, parse_mode="Markdown")
+
 @router.callback_query(F.data.startswith("buycrypto_") | F.data.startswith("buystock_"))
 async def buy_asset(callback: CallbackQuery):
     is_crypto = callback.data.startswith("buycrypto_")
@@ -82,7 +98,6 @@ async def buy_asset(callback: CallbackQuery):
             await callback.answer("Недостаточно монет!", show_alert=True)
             return
             
-        # Покупаем 1 единицу
         await db.execute("UPDATE players SET balance = balance - ? WHERE user_id=?", (price, callback.from_user.id))
         await db.execute("INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, ?, 1) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + 1", (callback.from_user.id, symbol))
         await db.commit()
