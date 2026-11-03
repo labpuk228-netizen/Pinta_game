@@ -6,7 +6,8 @@ from database import get_player, DB_PATH
 from keyboards import job_menu
 
 router = Router()
-PAGE_SIZE = 4
+JOB_PAGE_SIZE = 4
+SIDE_PAGE_SIZE = 5
 
 @router.message(F.text == "💼 Работа")
 async def show_jobs_menu(message: Message):
@@ -17,6 +18,7 @@ async def show_jobs_menu(message: Message):
         text = "💼 **Биржа труда**\nТы пока безработный. Найди работу или подработай!"
     await message.answer(text, parse_mode="Markdown", reply_markup=job_menu())
 
+# --- ВАКАНСИИ (Пагинация) ---
 @router.message(F.text == "📋 Вакансии")
 async def list_jobs(message: Message):
     await render_jobs(message, 0)
@@ -26,22 +28,22 @@ async def render_jobs(target, page):
         async with db.execute("SELECT id, title, salary, req_edu, req_prop FROM jobs") as cur:
             jobs = await cur.fetchall()
     
-    start = page * PAGE_SIZE
-    page_jobs = jobs[start:start+PAGE_SIZE]
+    start = page * JOB_PAGE_SIZE
+    page_jobs = jobs[start:start+JOB_PAGE_SIZE]
     text = f"📋 **Вакансии (стр. {page+1})**\n\n"
     kb = []
     
     for j in page_jobs:
         req = []
-        if j[3] > 0: req.append(f"🎓 Обр. Ур.{j[3]}")
-        if j[4] > 0: req.append(f"🏠 Жильё Ур.{j[4]}")
+        if j[3] > 0: req.append(f"🎓 Ур.{j[3]}")
+        if j[4] > 0: req.append(f"🏠 Ур.{j[4]}")
         req_t = ", ".join(req) if req else "Без требований"
         text += f"**{j[1]}** — {j[2]} 💰 (Нужно: {req_t})\n"
         kb.append([InlineKeyboardButton(text=f"Устроиться: {j[1]}", callback_data=f"takejob_{j[0]}")])
         
     nav = []
     if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"page_jobs_{page-1}"))
-    if start + PAGE_SIZE < len(jobs): nav.append(InlineKeyboardButton(text="➡️", callback_data=f"page_jobs_{page+1}"))
+    if start + JOB_PAGE_SIZE < len(jobs): nav.append(InlineKeyboardButton(text="➡️", callback_data=f"page_jobs_{page+1}"))
     if nav: kb.append(nav)
     
     if isinstance(target, Message):
@@ -74,18 +76,25 @@ async def take_job(callback: CallbackQuery):
     await callback.message.edit_text(f"✅ Ты устроился на работу: **{job[0]}**!\nЗарплата будет приходить каждые 5 минут.", parse_mode="Markdown")
     await callback.answer("Успешно!")
 
+# --- ПОДРАБОТКИ (Пагинация + Кулдаун) ---
 @router.message(F.text == "🛠 Подработки")
 async def list_side_jobs(message: Message):
-    player = await get_player(message.from_user.id)
+    await render_side_jobs(message, 0)
+
+async def render_side_jobs(target, page):
+    player = await get_player(target.from_user.id)
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT id, title, min_e, max_e, cooldown, req_edu, req_prop, (SELECT last_done FROM side_cooldowns WHERE user_id=? AND job_id=side_jobs.id) FROM side_jobs", (message.from_user.id,)) as cur:
+        async with db.execute("SELECT id, title, min_e, max_e, cooldown, req_edu, req_prop, (SELECT last_done FROM side_cooldowns WHERE user_id=? AND job_id=side_jobs.id) FROM side_jobs", (target.from_user.id,)) as cur:
             jobs = await cur.fetchall()
     
-    text = "🛠 **Доступные подработки:**\n\n"
+    start = page * SIDE_PAGE_SIZE
+    page_jobs = jobs[start:start+SIDE_PAGE_SIZE]
+    
+    text = f"🛠 **Доступные подработки** (стр. {page+1})\n\n"
     kb = []
     now = datetime.utcnow()
     
-    for j in jobs:
+    for j in page_jobs:
         can_do, status = True, []
         if player[8] < j[5]: can_do = False; status.append(f"🎓{j[5]}")
         if player[7] < j[6]: can_do = False; status.append(f"🏠{j[6]}")
@@ -100,15 +109,33 @@ async def list_side_jobs(message: Message):
         req = f" ({', '.join(status)})" if status else ""
         text += f"**{j[1]}** — {j[2]}-{j[3]} 💰{req}\n"
         
-        # ИСПРАВЛЕНО: Теперь на кнопке написано название работы
+        # Кнопка появляется только если можно выполнить
         if can_do:
-            kb.append([InlineKeyboardButton(text=f"▶️ {j[1]}", callback_data=f"doside_{j[0]}")])
+            kb.append([InlineKeyboardButton(text=f"▶️ {j[1]}", callback_data=f"doside_{j[0]}_{page}")])
             
-    await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    nav = []
+    if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"sidepage_{page-1}"))
+    if start + SIDE_PAGE_SIZE < len(jobs): nav.append(InlineKeyboardButton(text="➡️", callback_data=f"sidepage_{page+1}"))
+    if nav: kb.append(nav)
+    
+    if isinstance(target, Message):
+        await target.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    else:
+        await target.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+@router.callback_query(F.data.startswith("sidepage_"))
+async def paginate_side(callback: CallbackQuery):
+    page = int(callback.data.split("_")[1])
+    await render_side_jobs(callback, page)
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("doside_"))
 async def do_side(callback: CallbackQuery):
-    job_id = int(callback.data.split("_")[1])
+    # Достаем ID работы и номер страницы, на которой мы находились
+    parts = callback.data.split("_")
+    job_id = int(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
+    
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title, min_e, max_e FROM side_jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
@@ -118,5 +145,8 @@ async def do_side(callback: CallbackQuery):
         await db.execute("INSERT OR REPLACE INTO side_cooldowns VALUES (?, ?, CURRENT_TIMESTAMP)", (callback.from_user.id, job_id))
         await db.commit()
     
-    await callback.answer(f"💪 {job[0]}: заработано {earn} монет!", show_alert=True)
-    await callback.message.delete()
+    # Убираем show_alert=True, чтобы не было окна с кнопкой "ОК"
+    await callback.answer(f"💪 +{earn} монет!")
+    
+    # Вместо удаления сообщения, просто перерисовываем список на той же странице
+    await render_side_jobs(callback, page)
