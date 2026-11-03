@@ -10,8 +10,13 @@ async def show_profile(message: Message):
     player = await get_player(message.from_user.id)
     if not player: return
     
-    # Индексы из БД: 3-balance, 4-job_salary, 6-prop, 7-edu, 8-biz, 9-biz_lvl
-    prop_id, edu, biz_id, biz_lvl = player[6], player[7], player[8], player[9]
+    # ИСПРАВЛЕНО: правильные индексы новой БД
+    prop_id = player[7]
+    edu = player[8]
+    biz_id = player[9]
+    biz_lvl = player[10]
+    last_online = player[6]
+    rep = player[17]
     
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title FROM properties WHERE id=?", (prop_id,)) as cur:
@@ -30,7 +35,7 @@ async def show_profile(message: Message):
         f"🏠 Жильё: {prop_title}\n"
         f"🏢 Бизнес: {biz_title}\n"
         f"🎓 Образование: Уровень {edu}\n"
-        f"🏅 Репутация: {player[19]}\n"
-        f"🕒 Последний вход: {player[5]}",
+        f"🏅 Репутация: {rep}\n"
+        f"🕒 Последний вход: {last_online}",
         parse_mode="Markdown"
-            )
+        )
