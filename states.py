@@ -10,3 +10,9 @@ class TradeState(StatesGroup):
 class OrderState(StatesGroup):
     waiting_amount = State()
     waiting_price = State()
+
+class CasinoState(StatesGroup):
+    waiting_bet = State()
+
+class DiceState(StatesGroup):
+    waiting_bet = State()
