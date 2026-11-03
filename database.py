@@ -32,9 +32,13 @@ async def init_db():
         CREATE TABLE IF NOT EXISTS side_cooldowns (user_id INTEGER, job_id INTEGER, last_done TIMESTAMP, PRIMARY KEY (user_id, job_id));
         
         CREATE TABLE IF NOT EXISTS mining_shop (id INTEGER PRIMARY KEY, part_type TEXT, name TEXT, price INTEGER, hashrate REAL, wattage INTEGER, slots INTEGER);
-        CREATE TABLE IF NOT EXISTS mining_inventory (user_id INTEGER, part_id INTEGER, amount INTEGER DEFAULT 1, PRIMARY KEY (user_id, part_id));
         
-        -- ДОБАВЛЕН ИЗНОС ДЕТАЛЕЙ
+        -- ДОБАВЛЕН ИЗНОС В ИНВЕНТАРЬ
+        CREATE TABLE IF NOT EXISTS mining_inventory (
+            user_id INTEGER, part_id INTEGER, amount INTEGER DEFAULT 1, cond REAL DEFAULT 100.0,
+            PRIMARY KEY (user_id, part_id)
+        );
+        
         CREATE TABLE IF NOT EXISTS mining_rigs (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, 
             mb_id INTEGER DEFAULT 0, psu_id INTEGER DEFAULT 0, cpu_id INTEGER DEFAULT 0,
@@ -72,7 +76,6 @@ async def init_db():
         try: await db.execute("ALTER TABLE side_jobs ADD COLUMN no_cooldown_edu INTEGER DEFAULT 99")
         except aiosqlite.OperationalError: pass
         
-        # Миграции для износа
         try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN mb_cond REAL DEFAULT 100.0")
         except aiosqlite.OperationalError: pass
         try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN psu_cond REAL DEFAULT 100.0")
@@ -80,6 +83,10 @@ async def init_db():
         try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN cpu_cond REAL DEFAULT 100.0")
         except aiosqlite.OperationalError: pass
         try: await db.execute("ALTER TABLE mining_rig_gpus ADD COLUMN cond REAL DEFAULT 100.0")
+        except aiosqlite.OperationalError: pass
+        
+        # Миграция для инвентаря
+        try: await db.execute("ALTER TABLE mining_inventory ADD COLUMN cond REAL DEFAULT 100.0")
         except aiosqlite.OperationalError: pass
 
         await db.execute("INSERT OR IGNORE INTO system_state (key, value) VALUES ('season', 'Лето')")
