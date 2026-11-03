@@ -1,12 +1,10 @@
 import aiosqlite
 from aiogram import Router, F
 from aiogram.types import Message
-
 from config import SECRET_ADMIN_CODE
 from database import DB_PATH
 
 router = Router()
-
 
 @router.message(F.text == SECRET_ADMIN_CODE)
 async def admin_entry(message: Message):
@@ -16,9 +14,7 @@ async def admin_entry(message: Message):
                 await message.answer("⛔ Доступ запрещён.")
                 return
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT user_id, username, balance, last_online FROM players ORDER BY last_online DESC"
-        ) as cur:
+        async with db.execute("SELECT user_id, username, balance, last_online FROM players ORDER BY last_online DESC") as cur:
             rows = await cur.fetchall()
     if not rows:
         await message.answer("👥 Игроков пока нет.")
