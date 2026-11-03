@@ -3,7 +3,11 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from database import init_db
-from handlers import start, common, profile, jobs, education, property, business, mining, market, casino, social, crime
+from handlers import (
+    start, common, profile, jobs, education, property, 
+    business, mining, market, casino, social, crime, 
+    top, faq, checkup # <-- ВОТ ОНИ, ТЕПЕРЬ ПОДКЛЮЧЕНЫ
+)
 from tasks.scheduler import start_scheduler
 
 async def health(request): return web.Response(text="OK")
@@ -22,12 +26,18 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    for r in [start, common, profile, jobs, education, property, business, mining, market, casino, social, crime]:
+    # Подключаем абсолютно все роутеры
+    routers = [
+        start, common, profile, jobs, education, property, 
+        business, mining, market, casino, social, crime, 
+        top, faq, checkup
+    ]
+    for r in routers:
         dp.include_router(r.router)
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Финальная сборка)...")
+    print("Бот Пихта запущен (Финальная сборка всех модулей)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
