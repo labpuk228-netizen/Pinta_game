@@ -1,14 +1,12 @@
-import asyncio
-import os
+import asyncio, os
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from database import init_db
-from handlers import start, common
+from handlers import start, common, profile, jobs, education, property, business
 from tasks.scheduler import start_scheduler
 
-async def health(request): 
-    return web.Response(text="OK")
+async def health(request): return web.Response(text="OK")
 
 async def start_web_server():
     app = web.Application()
@@ -17,21 +15,20 @@ async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.environ.get("PORT", 8080))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
+    await web.TCPSite(runner, "0.0.0.0", port).start()
 
 async def main():
     await init_db()
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    # Базовые роутеры (остальные добавим в следующих блоках)
-    dp.include_router(start.router)
-    dp.include_router(common.router)
+    # Подключаем Роутеры Блока 2
+    for r in [start, common, profile, jobs, education, property, business]:
+        dp.include_router(r.router)
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Блок 1 - База)...")
+    print("Бот Пихта запущен (Блок 2 - Экономика)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
