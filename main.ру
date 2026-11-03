@@ -27,7 +27,7 @@ async def main():
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Блок 4 - Криминал и Сезоны)...")
+    print("Бот Пихта запущен (Финальная сборка)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
