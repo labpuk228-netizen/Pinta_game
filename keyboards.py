@@ -6,7 +6,7 @@ def main_menu(is_admin=False):
         [KeyboardButton(text="🏠 Жильё"), KeyboardButton(text="🎓 Образование")],
         [KeyboardButton(text="🏢 Бизнесы"), KeyboardButton(text="📈 Биржа")],
         [KeyboardButton(text="⛏️ Майнинг"), KeyboardButton(text="🤝 Социалка")],
-        [KeyboardButton(text="🎲 Казино"), KeyboardButton(text="🕵️ Криминал")], # НОВАЯ КНОПКА
+        [KeyboardButton(text="🎲 Казино"), KeyboardButton(text="🕵️ Криминал")],
         [KeyboardButton(text="🏆 Топ"), KeyboardButton(text="💸 Перевод")],
         [KeyboardButton(text="❓ FAQ")]
     ]
@@ -18,12 +18,11 @@ def main_menu(is_admin=False):
 
 def crime_menu():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🦹 Ограбить игрока"), KeyboardButton(text="🛡 Купить охрану")],
-        [KeyboardButton(text="⚖️ Выйти из тюрьмы")],
-        [KeyboardButton(text="⬅️ Назад в меню")]
+        [KeyboardButton(text="🦹 Ограбить игрока"), KeyboardButton(text="👤 Ограбить NPC")],
+        [KeyboardButton(text="💻 Взломать банк"), KeyboardButton(text="🛡 Купить охрану")],
+        [KeyboardButton(text="⚖️ Выйти из тюрьмы"), KeyboardButton(text="⬅️ Назад в меню")]
     ], resize_keyboard=True)
 
-# ... (остальные меню оставляем как в прошлый раз)
 def job_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📋 Вакансии"), KeyboardButton(text="🛠 Подработки")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
 def prop_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🏠 Моё жильё"), KeyboardButton(text="🏘 Вся недвижимость")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
 def biz_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🏢 Мои бизнесы"), KeyboardButton(text="💼 Купить бизнес")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
