@@ -1,13 +1,18 @@
 import aiosqlite
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from database import get_player, DB_PATH
+from database import get_player, DB_PATH, is_in_prison
 from keyboards import mining_menu
 
 router = Router()
 
 @router.message(F.text.contains("Майнинг"))
 async def mining_hub(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Майнинг недоступен. Осталось: {mins} мин.")
+        return
+        
     player = await get_player(message.from_user.id)
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT SUM(sp.hashrate * rg.amount) FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id=?", (message.from_user.id,)) as cur:
@@ -48,10 +53,15 @@ async def set_coin(callback: CallbackQuery):
 
 @router.message(F.text.contains("Магазин деталей"))
 async def shop_menu(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
     types = {"case": "📦 Корпуса", "mb": "🔲 Материнки", "psu": "🔌 Блоки питания", "cpu": "🧠 Процессоры", "gpu": "🎮 Видеокарты"}
     kb = [[InlineKeyboardButton(text=name, callback_data=f"shopcat_{t}")] for t, name in types.items()]
     await message.answer("🛒 **Магазин комплектующих**\nВыбери категорию:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
+# ... (остальной код mining.py оставляем без изменений, он рабочий)
 @router.callback_query(F.data.startswith("shopcat_"))
 async def shop_category(callback: CallbackQuery):
     cat = callback.data.split("_")[1]
@@ -66,7 +76,7 @@ async def shop_category(callback: CallbackQuery):
         if p[4] > 0: stats.append(f"Ватт: {p[4]}")
         if p[5] > 0: stats.append(f"Слотов: {p[5]}")
         text += f"**{p[1]}**\nЦена: {p[2]} 💰 | {', '.join(stats)}\n\n"
-        kb.append([InlineKeyboardButton(text=f"Купить за {p[2]}", callback_data=f"buypart_{p[0]}")]) # ИСПРАВЛЕНО
+        kb.append([InlineKeyboardButton(text=f"Купить за {p[2]}", callback_data=f"buypart_{p[0]}")])
     kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="shopback")])
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -77,7 +87,7 @@ async def shop_back(callback: CallbackQuery):
     await callback.message.edit_text("🛒 **Магазин комплектующих**\nВыбери категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
 
-@router.callback_query(F.data.startswith("buypart_")) # ИСПРАВЛЕНО
+@router.callback_query(F.data.startswith("buypart_"))
 async def buy_part(callback: CallbackQuery):
     part_id = int(callback.data.split("_")[1])
     player = await get_player(callback.from_user.id)
@@ -110,6 +120,10 @@ async def _render_rigs(target):
 
 @router.message(F.text.contains("Мои фермы"))
 async def my_rigs(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
     await _render_rigs(message)
 
 @router.callback_query(F.data == "back_rigs")
