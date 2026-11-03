@@ -53,12 +53,12 @@ async def buy_prop(callback: CallbackQuery):
 @router.message(F.text == "🏠 Моё жильё")
 async def my_prop(message: Message):
     player = await get_player(message.from_user.id)
-    if player[6] == 0:
+    if player[7] == 0: # ИСПРАВЛЕНО: 7
         await message.answer("Ты живешь на улице. Сними или купи жильё!")
         return
         
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT title, rent, comfort FROM properties WHERE id=?", (player[6],)) as cur:
+        async with db.execute("SELECT title, rent, comfort FROM properties WHERE id=?", (player[7],)) as cur: # ИСПРАВЛЕНО: 7
             prop = await cur.fetchone()
             
     text = f"🏠 **Твоё жильё: {prop[0]}**\nКомфорт: {prop[2]}\nАренда: {prop[1]}\n"
