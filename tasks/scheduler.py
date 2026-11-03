@@ -6,11 +6,8 @@ scheduler = AsyncIOScheduler()
 
 async def process_cycle():
     async with aiosqlite.connect(DB_PATH) as db:
-        # 1. Зарплата
         await db.execute("UPDATE players SET balance = balance + job_salary WHERE job_salary > 0")
-        # 2. Аренда
         await db.execute("UPDATE players SET balance = balance - COALESCE((SELECT rent FROM properties WHERE properties.id = players.property_id), 0) WHERE property_id > 0")
-        # 3. Бизнесы
         await db.execute("""
             UPDATE players 
             SET balance = balance + (
@@ -18,11 +15,9 @@ async def process_cycle():
                 COALESCE((SELECT upkeep FROM businesses WHERE businesses.id = players.business_id), 0) * business_level
             ) WHERE business_id > 0
         """)
-        # 4. Еда
         await db.execute("UPDATE players SET balance = balance - 5")
         
-        # 5. МАЙНИНГ (начисляем BTC)
-        # Находим всех, у кого есть фермы, считаем хешрейт и добавляем крипту
+        # МАЙНИНГ
         await db.execute("""
             UPDATE players 
             SET crypto_btc = COALESCE(crypto_btc, 0) + (
