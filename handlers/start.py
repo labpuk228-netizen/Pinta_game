@@ -1,12 +1,10 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
-
 from database import create_player, get_player, update_online
 from keyboards import main_menu
 
 router = Router()
-
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
