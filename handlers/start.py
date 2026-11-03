@@ -22,5 +22,5 @@ async def cmd_start(message: Message):
             reply_markup=main_menu()
         )
     else:
-        is_adm = player[18] if len(player) > 18 else False
+        is_adm = player[15] if len(player) > 15 else False # ИСПРАВЛЕНО: 15
         await message.answer("С возвращением в Пихту! 🌲", reply_markup=main_menu(is_adm))
