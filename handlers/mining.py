@@ -14,8 +14,15 @@ async def mining_hub(message: Message):
         return
         
     player = await get_player(message.from_user.id)
+    query = """
+        SELECT SUM(sp.hashrate * rg.amount) 
+        FROM mining_rig_gpus rg 
+        JOIN mining_rigs r ON rg.rig_id = r.id 
+        JOIN mining_shop sp ON rg.part_id = sp.id 
+        WHERE r.user_id=?
+    """
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT SUM(sp.hashrate * rg.amount) FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id=?", (message.from_user.id,)) as cur:
+        async with db.execute(query, (message.from_user.id,)) as cur:
             total_hash = (await cur.fetchone())[0] or 0
             
     btc = player[19] if len(player) > 19 and player[19] else 0.0
@@ -320,15 +327,19 @@ async def remove_part(callback: CallbackQuery):
         
         async with aiosqlite.connect(DB_PATH) as db:
             if ptype in ("mb", "psu", "cpu"):
-                async with db.execute(f"SELECT {ptype}_id, {ptype}_cond FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
+                query = f"SELECT {ptype}_id, {ptype}_cond FROM mining_rigs WHERE id=?"
+                async with db.execute(query, (rig_id,)) as cur:
                     row = await cur.fetchone()
                     part_id = row[0] if row else 0
                     cond = row[1] if row else 100.0
                     
                 if part_id:
-                    await db.execute(f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?", (rig_id,))
+                    update_q = f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?"
+                    await db.execute(update_q, (rig_id,))
+                    
                     async with db.execute("SELECT amount, cond FROM mining_inventory WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id)) as cur:
                         inv = await cur.fetchone()
+                        
                     if inv:
                         new_amount = inv[0] + 1
                         avg_cond = (inv[0] * inv[1] + cond) / new_amount
@@ -344,5 +355,4 @@ async def remove_part(callback: CallbackQuery):
                     cond = row[1] if row else 100.0
                     
                 if amt > 0:
-                    await db.execute("DELETE FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id))
-                    async with db.execute("SELECT amount, cond FROM mining_inventory WHERE user_id=? AND part_id=?", (callback.from_user.id
+                    await db.execute("DELETE FROM mining_rig_gpus W
