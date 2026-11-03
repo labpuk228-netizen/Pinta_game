@@ -27,7 +27,8 @@ async def show_education(message: Message):
         if current_edu >= lvl:
             text += f"✅ {e[1]}\n"
         else:
-            text += f▪️ {e[1]} — {e[2]} 💰\n"
+            # Убрали спецсимвол, поставили дефис, проверили кавычки
+            text += f"- {e[1]} — {e[2]} 💰\n"
             kb.append([InlineKeyboardButton(text=f"Купить: {e[1]} ({e[2]})", callback_data=f"study_{e[0]}")])
     
     reply_markup = InlineKeyboardMarkup(inline_keyboard=kb) if kb else None
@@ -46,7 +47,6 @@ async def study_callback(callback: CallbackQuery):
             await callback.answer(f"Недостаточно средств! Нужно {edu[1]} монет.", show_alert=True)
             return
         
-        # Обновляем уровень образования
         await db.execute("UPDATE players SET balance = balance - ?, education_level=? WHERE user_id=?", (edu[1], edu[2], callback.from_user.id))
         await db.commit()
     
