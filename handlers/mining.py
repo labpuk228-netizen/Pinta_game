@@ -34,7 +34,6 @@ async def mining_hub(message: Message):
         parse_mode="Markdown", reply_markup=mining_menu()
     )
 
-# НОВЫЙ ОБРАБОТЧИК ВЫВОДА
 @router.message(F.text.contains("Вывести в портфель"))
 async def withdraw_crypto(message: Message):
     player = await get_player(message.from_user.id)
@@ -73,6 +72,7 @@ async def set_coin(callback: CallbackQuery):
         await db.execute("UPDATE players SET mining_coin=? WHERE user_id=?", (coin, callback.from_user.id))
         await db.commit()
     await callback.message.edit_text(f"✅ Теперь ты майнишь {coin}")
+    await callback.answer()
 
 @router.message(F.text.contains("Магазин деталей"))
 async def shop_menu(message: Message):
@@ -101,6 +101,7 @@ async def shop_category(callback: CallbackQuery):
         kb.append([InlineKeyboardButton(text=f"Купить за {p[2]}", callback_data=f"buypart_{p[0]}")])
     kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="shopback")])
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
 
 @router.callback_query(F.data == "shopback")
 async def shop_back(callback: CallbackQuery):
@@ -200,8 +201,8 @@ async def _render_rig_config(target, rig_id):
     
     kb = [
         [InlineKeyboardButton(text="Установить деталь", callback_data=f"install_menu_{rig_id}")],
-        [InlineKeyboardButton(text="📊 Состояние", callback_data=f"cond_{rig_id}")], # НОВАЯ КНОПКА
-        [InlineKeyboardButton(text="🗑 Снять деталь", callback_data=f"remove_menu_{rig_id}")], # НОВАЯ КНОПКА
+        [InlineKeyboardButton(text="📊 Состояние", callback_data=f"cond_{rig_id}")],
+        [InlineKeyboardButton(text="🗑 Снять деталь", callback_data=f"remove_menu_{rig_id}")],
         [InlineKeyboardButton(text="⬅️ К фермам", callback_data="back_rigs")]
     ]
     if isinstance(target, CallbackQuery): await target.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
@@ -209,107 +210,131 @@ async def _render_rig_config(target, rig_id):
 
 @router.callback_query(F.data.startswith("rig_"))
 async def rig_config(callback: CallbackQuery):
-    await _render_rig_config(callback, int(callback.data.split("_")[1]))
+    try:
+        await _render_rig_config(callback, int(callback.data.split("_")[1]))
+    except Exception as e:
+        await callback.message.answer(f"Ошибка: {e}")
     await callback.answer()
 
-# --- СОСТОЯНИЕ ДЕТАЛЕЙ ---
 @router.callback_query(F.data.startswith("cond_"))
 async def show_condition(callback: CallbackQuery):
-    rig_id = int(callback.data.split("_")[1])
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT p_mb.name, r.mb_cond, p_psu.name, r.psu_cond, p_cpu.name, r.cpu_cond FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?", (rig_id,)) as cur:
-            rig = await cur.fetchone()
-        async with db.execute("SELECT sp.name, rg.cond, rg.amount FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?", (rig_id,)) as cur:
-            gpus = await cur.fetchall()
+    try:
+        rig_id = int(callback.data.split("_")[1])
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT p_mb.name, r.mb_cond, p_psu.name, r.psu_cond, p_cpu.name, r.cpu_cond FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?", (rig_id,)) as cur:
+                rig = await cur.fetchone()
+            async with db.execute("SELECT sp.name, rg.cond, rg.amount FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?", (rig_id,)) as cur:
+                gpus = await cur.fetchall()
+                
+        text = f"📊 **Состояние деталей:**\n\n"
+        if rig[0]: text += f"🔲 {rig[0]}: {rig[1]:.1f}%\n"
+        if rig[2]: text += f"🔌 {rig[2]}: {rig[3]:.1f}%\n"
+        if rig[4]: text += f"🧠 {rig[4]}: {rig[5]:.1f}%\n"
+        for g in gpus:
+            text += f"🎮 {g[0]} x{g[2]}: {g[1]:.1f}%\n"
             
-    text = f"📊 **Состояние деталей:**\n\n"
-    if rig[0]: text += f"🔲 {rig[0]}: {rig[1]:.1f}%\n"
-    if rig[2]: text += f"🔌 {rig[2]}: {rig[3]:.1f}%\n"
-    if rig[4]: text += f"🧠 {rig[4]}: {rig[5]:.1f}%\n"
-    for g in gpus:
-        text += f"🎮 {g[0]} x{g[2]}: {g[1]:.1f}%\n"
-        
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")]])
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")]])
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
+    except Exception as e:
+        await callback.message.answer(f"Ошибка: {e}")
     await callback.answer()
 
-# --- СНЯТИЕ ДЕТАЛЕЙ ---
 @router.callback_query(F.data.startswith("remove_menu_"))
 async def remove_menu(callback: CallbackQuery):
-    rig_id = int(callback.data.split("_")[2])
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT r.mb_id, r.psu_id, r.cpu_id FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
-            rig = await cur.fetchone()
-        async with db.execute("SELECT part_id, amount FROM mining_rig_gpus WHERE rig_id=?", (rig_id,)) as cur:
-            gpus = await cur.fetchall()
+    try:
+        rig_id = int(callback.data.split("_")[2])
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT mb_id, psu_id, cpu_id FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
+                rig = await cur.fetchone()
+            async with db.execute("SELECT part_id, amount FROM mining_rig_gpus WHERE rig_id=?", (rig_id,)) as cur:
+                gpus = await cur.fetchall()
+                
+        kb = []
+        if rig[0]: kb.append([InlineKeyboardButton(text="🔲 Снять Материнку", callback_data=f"rmpart_{rig_id}_mb")])
+        if rig[1]: kb.append([InlineKeyboardButton(text="🔌 Снять БП", callback_data=f"rmpart_{rig_id}_psu")])
+        if rig[2]: kb.append([InlineKeyboardButton(text="🧠 Снять Процессор", callback_data=f"rmpart_{rig_id}_cpu")])
+        for g in gpus:
+            kb.append([InlineKeyboardButton(text=f"🎮 Снять Видеокарту (x{g[1]})", callback_data=f"rmpart_{rig_id}_gpu_{g[0]}")])
             
-    kb = []
-    if rig[0]: kb.append([InlineKeyboardButton(text="🔲 Снять Материнку", callback_data=f"rmpart_{rig_id}_mb")])
-    if rig[1]: kb.append([InlineKeyboardButton(text="🔌 Снять БП", callback_data=f"rmpart_{rig_id}_psu")])
-    if rig[2]: kb.append([InlineKeyboardButton(text="🧠 Снять Процессор", callback_data=f"rmpart_{rig_id}_cpu")])
-    for g in gpus:
-        kb.append([InlineKeyboardButton(text=f"🎮 Снять Видеокарту (x{g[1]})", callback_data=f"rmpart_{rig_id}_gpu_{g[0]}")])
-        
-    if not kb:
-        await callback.answer("Ферма пуста.", show_alert=True)
-        return
-        
-    kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")])
-    await callback.message.edit_text("Что снять с фермы? (Детали вернутся в инвентарь)", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        if not kb:
+            await callback.message.edit_text("Ферма пуста.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")]]))
+            await callback.answer()
+            return
+            
+        kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")])
+        await callback.message.edit_text("Что снять с фермы? (Детали вернутся в инвентарь)", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except Exception as e:
+        await callback.message.answer(f"Ошибка: {e}")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("rmpart_"))
 async def remove_part(callback: CallbackQuery):
-    parts = callback.data.split("_")
-    rig_id, ptype = int(parts[1]), parts[2]
-    
-    async with aiosqlite.connect(DB_PATH) as db:
-        if ptype in ("mb", "psu", "cpu"):
-            async with db.execute(f"SELECT {ptype}_id FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
-                part_id = (await cur.fetchone())[0]
-            await db.execute(f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?", (rig_id,))
-            await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, 1) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
-        elif ptype == "gpu":
-            part_id = int(parts[3])
-            async with db.execute("SELECT amount FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id)) as cur:
-                amt = (await cur.fetchone())[0]
-            await db.execute("DELETE FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id))
-            await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, ?) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + ?", (callback.from_user.id, part_id, amt, amt))
-        await db.commit()
+    try:
+        parts = callback.data.split("_")
+        rig_id, ptype = int(parts[1]), parts[2]
         
-    await callback.answer("✅ Деталь снята и возвращена в инвентарь!")
-    await _render_rig_config(callback, rig_id)
+        async with aiosqlite.connect(DB_PATH) as db:
+            if ptype in ("mb", "psu", "cpu"):
+                async with db.execute(f"SELECT {ptype}_id FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
+                    row = await cur.fetchone()
+                    part_id = row[0] if row else 0
+                    
+                if part_id:
+                    await db.execute(f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?", (rig_id,))
+                    await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, 1) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
+            elif ptype == "gpu":
+                part_id = int(parts[3])
+                async with db.execute("SELECT amount FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id)) as cur:
+                    row = await cur.fetchone()
+                    amt = row[0] if row else 0
+                    
+                if amt > 0:
+                    await db.execute("DELETE FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id))
+                    await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, ?) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + ?", (callback.from_user.id, part_id, amt, amt))
+            await db.commit()
+            
+        await callback.message.answer("✅ Деталь снята и возвращена в инвентарь!")
+        await _render_rig_config(callback, rig_id)
+    except Exception as e:
+        await callback.message.answer(f"Ошибка при снятии: {e}")
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("install_menu_"))
 async def install_part_menu(callback: CallbackQuery):
-    rig_id = int(callback.data.split("_")[2])
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT sp.id, sp.name, sp.part_type, i.amount FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id WHERE i.user_id=? AND sp.part_type != 'case'", (callback.from_user.id,)) as cur:
-            items = await cur.fetchall()
-    if not items:
-        await callback.answer()
-        await callback.message.answer("❌ У тебя нет деталей в инвентаре!")
-        return
-    kb = [[InlineKeyboardButton(text=f"[{i[2].upper()}] {i[1]} (x{i[3]})", callback_data=f"do_install_{rig_id}_{i[0]}")] for i in items]
-    kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")])
-    await callback.message.edit_text("Выбери деталь для установки:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    try:
+        rig_id = int(callback.data.split("_")[2])
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT sp.id, sp.name, sp.part_type, i.amount FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id WHERE i.user_id=? AND sp.part_type != 'case'", (callback.from_user.id,)) as cur:
+                items = await cur.fetchall()
+        if not items:
+            await callback.message.answer("❌ У тебя нет деталей в инвентаре!")
+            await callback.answer()
+            return
+        kb = [[InlineKeyboardButton(text=f"[{i[2].upper()}] {i[1]} (x{i[3]})", callback_data=f"do_install_{rig_id}_{i[0]}")] for i in items]
+        kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")])
+        await callback.message.edit_text("Выбери деталь для установки:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except Exception as e:
+        await callback.message.answer(f"Ошибка: {e}")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("do_install_"))
 async def do_install(callback: CallbackQuery):
-    _, _, rig_id, part_id = callback.data.split("_")
-    rig_id, part_id = int(rig_id), int(part_id)
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT part_type, name FROM mining_shop WHERE id=?", (part_id,)) as cur:
-            part = await cur.fetchone()
-        ptype = part[0]
-        if ptype == 'gpu':
-            await db.execute("INSERT INTO mining_rig_gpus (rig_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) ON CONFLICT(rig_id, part_id) DO UPDATE SET amount = amount + 1", (rig_id, part_id))
-        elif ptype in ('mb', 'psu', 'cpu'):
-            await db.execute(f"UPDATE mining_rigs SET {ptype}_id=?, {ptype}_cond=100.0 WHERE id=?", (part_id, rig_id))
-        await db.execute("UPDATE mining_inventory SET amount = amount - 1 WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id))
-        await db.execute("DELETE FROM mining_inventory WHERE amount <= 0")
-        await db.commit()
+    try:
+        _, _, rig_id, part_id = callback.data.split("_")
+        rig_id, part_id = int(rig_id), int(part_id)
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT part_type, name FROM mining_shop WHERE id=?", (part_id,)) as cur:
+                part = await cur.fetchone()
+            ptype = part[0]
+            if ptype == 'gpu':
+                await db.execute("INSERT INTO mining_rig_gpus (rig_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) ON CONFLICT(rig_id, part_id) DO UPDATE SET amount = amount + 1", (rig_id, part_id))
+            elif ptype in ('mb', 'psu', 'cpu'):
+                await db.execute(f"UPDATE mining_rigs SET {ptype}_id=?, {ptype}_cond=100.0 WHERE id=?", (part_id, rig_id))
+            await db.execute("UPDATE mining_inventory SET amount = amount - 1 WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id))
+            await db.execute("DELETE FROM mining_inventory WHERE amount <= 0")
+            await db.commit()
+        await callback.message.answer(f"✅ {part[1]} установлен!")
+        await _render_rig_config(callback, rig_id)
+    except Exception as e:
+        await callback.message.answer(f"Ошибка установки: {e}")
     await callback.answer()
-    await callback.message.answer(f"✅ {part[1]} установлен!")
-    await _render_rig_config(callback, rig_id)
