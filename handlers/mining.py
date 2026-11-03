@@ -34,6 +34,29 @@ async def mining_hub(message: Message):
         parse_mode="Markdown", reply_markup=mining_menu()
     )
 
+# НОВЫЙ ОБРАБОТЧИК ВЫВОДА
+@router.message(F.text.contains("Вывести в портфель"))
+async def withdraw_crypto(message: Message):
+    player = await get_player(message.from_user.id)
+    btc, eth, doge = player[19], player[20], player[23]
+    
+    if btc == 0 and eth == 0 and doge == 0:
+        await message.answer("❌ У тебя нет намайненной крипты для вывода.")
+        return
+        
+    async with aiosqlite.connect(DB_PATH) as db:
+        if btc > 0:
+            await db.execute("INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'BTC', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?", (message.from_user.id, btc, btc))
+        if eth > 0:
+            await db.execute("INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'ETH', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?", (message.from_user.id, eth, eth))
+        if doge > 0:
+            await db.execute("INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'DOGE', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?", (message.from_user.id, doge, doge))
+            
+        await db.execute("UPDATE players SET crypto_btc = 0, crypto_eth = 0, crypto_doge = 0 WHERE user_id=?", (message.from_user.id,))
+        await db.commit()
+        
+    await message.answer(f"✅ Выведено в портфель:\n🪙 BTC: {btc:.6f}\n🪙 ETH: {eth:.6f}\n🪙 DOGE: {doge:.4f}\n\nТеперь ты можешь продать их на Бирже.")
+
 @router.message(F.text.contains("Сменить монету"))
 async def change_coin_menu(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -61,7 +84,6 @@ async def shop_menu(message: Message):
     kb = [[InlineKeyboardButton(text=name, callback_data=f"shopcat_{t}")] for t, name in types.items()]
     await message.answer("🛒 **Магазин комплектующих**\nВыбери категорию:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-# ... (остальной код mining.py оставляем без изменений, он рабочий)
 @router.callback_query(F.data.startswith("shopcat_"))
 async def shop_category(callback: CallbackQuery):
     cat = callback.data.split("_")[1]
@@ -161,19 +183,27 @@ async def do_create_rig(callback: CallbackQuery):
 
 async def _render_rig_config(target, rig_id):
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT r.name, p_mb.name, p_mb.slots, p_psu.name, p_psu.wattage, p_cpu.name, p_cpu.hashrate FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?", (rig_id,)) as cur:
+        async with db.execute("SELECT r.name, p_mb.name, p_mb.slots, p_psu.name, p_psu.wattage, p_cpu.name, p_cpu.hashrate, r.mb_id, r.psu_id, r.cpu_id FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?", (rig_id,)) as cur:
             rig = await cur.fetchone()
         async with db.execute("SELECT SUM(sp.wattage * rg.amount), SUM(sp.hashrate * rg.amount), SUM(rg.amount) FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?", (rig_id,)) as cur:
             gpu_stats = await cur.fetchone()
+            
     mb_slots = rig[2] if rig[2] else 0
     psu_max_w = rig[4] if rig[4] else 0
     cpu_hash = rig[6] if rig[6] else 0
     gpu_count = gpu_stats[2] if gpu_stats[2] else 0
     total_w = (gpu_stats[0] if gpu_stats[0] else 0)
     total_hash = cpu_hash + (gpu_stats[1] if gpu_stats[1] else 0)
+    
     text = f"🖥 **{rig[0]}**\n\n🔲 Материнка: {rig[1] or '❌ Нет'} (Слотов: {mb_slots})\n🔌 БП: {rig[3] or '❌ Нет'} (Лимит: {psu_max_w}W)\n🧠 Процессор: {rig[5] or '❌ Нет'}\n🎮 Видеокарт: {gpu_count}/{mb_slots}\n\n⚡ Потребление: {total_w}/{psu_max_w}W\n📈 Хешрейт: {total_hash:.4f}\n"
     if total_w > psu_max_w and psu_max_w > 0: text += "\n⚠️ **ВНИМАНИЕ: Не хватает мощности БП!**"
-    kb = [[InlineKeyboardButton(text="Установить деталь", callback_data=f"install_menu_{rig_id}")],[InlineKeyboardButton(text="⬅️ К фермам", callback_data="back_rigs")]]
+    
+    kb = [
+        [InlineKeyboardButton(text="Установить деталь", callback_data=f"install_menu_{rig_id}")],
+        [InlineKeyboardButton(text="📊 Состояние", callback_data=f"cond_{rig_id}")], # НОВАЯ КНОПКА
+        [InlineKeyboardButton(text="🗑 Снять деталь", callback_data=f"remove_menu_{rig_id}")], # НОВАЯ КНОПКА
+        [InlineKeyboardButton(text="⬅️ К фермам", callback_data="back_rigs")]
+    ]
     if isinstance(target, CallbackQuery): await target.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     else: await target.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -181,6 +211,74 @@ async def _render_rig_config(target, rig_id):
 async def rig_config(callback: CallbackQuery):
     await _render_rig_config(callback, int(callback.data.split("_")[1]))
     await callback.answer()
+
+# --- СОСТОЯНИЕ ДЕТАЛЕЙ ---
+@router.callback_query(F.data.startswith("cond_"))
+async def show_condition(callback: CallbackQuery):
+    rig_id = int(callback.data.split("_")[1])
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT p_mb.name, r.mb_cond, p_psu.name, r.psu_cond, p_cpu.name, r.cpu_cond FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?", (rig_id,)) as cur:
+            rig = await cur.fetchone()
+        async with db.execute("SELECT sp.name, rg.cond, rg.amount FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?", (rig_id,)) as cur:
+            gpus = await cur.fetchall()
+            
+    text = f"📊 **Состояние деталей:**\n\n"
+    if rig[0]: text += f"🔲 {rig[0]}: {rig[1]:.1f}%\n"
+    if rig[2]: text += f"🔌 {rig[2]}: {rig[3]:.1f}%\n"
+    if rig[4]: text += f"🧠 {rig[4]}: {rig[5]:.1f}%\n"
+    for g in gpus:
+        text += f"🎮 {g[0]} x{g[2]}: {g[1]:.1f}%\n"
+        
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")]])
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
+    await callback.answer()
+
+# --- СНЯТИЕ ДЕТАЛЕЙ ---
+@router.callback_query(F.data.startswith("remove_menu_"))
+async def remove_menu(callback: CallbackQuery):
+    rig_id = int(callback.data.split("_")[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT r.mb_id, r.psu_id, r.cpu_id FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
+            rig = await cur.fetchone()
+        async with db.execute("SELECT part_id, amount FROM mining_rig_gpus WHERE rig_id=?", (rig_id,)) as cur:
+            gpus = await cur.fetchall()
+            
+    kb = []
+    if rig[0]: kb.append([InlineKeyboardButton(text="🔲 Снять Материнку", callback_data=f"rmpart_{rig_id}_mb")])
+    if rig[1]: kb.append([InlineKeyboardButton(text="🔌 Снять БП", callback_data=f"rmpart_{rig_id}_psu")])
+    if rig[2]: kb.append([InlineKeyboardButton(text="🧠 Снять Процессор", callback_data=f"rmpart_{rig_id}_cpu")])
+    for g in gpus:
+        kb.append([InlineKeyboardButton(text=f"🎮 Снять Видеокарту (x{g[1]})", callback_data=f"rmpart_{rig_id}_gpu_{g[0]}")])
+        
+    if not kb:
+        await callback.answer("Ферма пуста.", show_alert=True)
+        return
+        
+    kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rig_{rig_id}")])
+    await callback.message.edit_text("Что снять с фермы? (Детали вернутся в инвентарь)", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("rmpart_"))
+async def remove_part(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    rig_id, ptype = int(parts[1]), parts[2]
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        if ptype in ("mb", "psu", "cpu"):
+            async with db.execute(f"SELECT {ptype}_id FROM mining_rigs WHERE id=?", (rig_id,)) as cur:
+                part_id = (await cur.fetchone())[0]
+            await db.execute(f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?", (rig_id,))
+            await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, 1) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
+        elif ptype == "gpu":
+            part_id = int(parts[3])
+            async with db.execute("SELECT amount FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id)) as cur:
+                amt = (await cur.fetchone())[0]
+            await db.execute("DELETE FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id))
+            await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount) VALUES (?, ?, ?) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + ?", (callback.from_user.id, part_id, amt, amt))
+        await db.commit()
+        
+    await callback.answer("✅ Деталь снята и возвращена в инвентарь!")
+    await _render_rig_config(callback, rig_id)
 
 @router.callback_query(F.data.startswith("install_menu_"))
 async def install_part_menu(callback: CallbackQuery):
@@ -206,9 +304,9 @@ async def do_install(callback: CallbackQuery):
             part = await cur.fetchone()
         ptype = part[0]
         if ptype == 'gpu':
-            await db.execute("INSERT INTO mining_rig_gpus (rig_id, part_id, amount) VALUES (?, ?, 1) ON CONFLICT(rig_id, part_id) DO UPDATE SET amount = amount + 1", (rig_id, part_id))
+            await db.execute("INSERT INTO mining_rig_gpus (rig_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) ON CONFLICT(rig_id, part_id) DO UPDATE SET amount = amount + 1", (rig_id, part_id))
         elif ptype in ('mb', 'psu', 'cpu'):
-            await db.execute(f"UPDATE mining_rigs SET {ptype}_id=? WHERE id=?", (part_id, rig_id))
+            await db.execute(f"UPDATE mining_rigs SET {ptype}_id=?, {ptype}_cond=100.0 WHERE id=?", (part_id, rig_id))
         await db.execute("UPDATE mining_inventory SET amount = amount - 1 WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id))
         await db.execute("DELETE FROM mining_inventory WHERE amount <= 0")
         await db.commit()
