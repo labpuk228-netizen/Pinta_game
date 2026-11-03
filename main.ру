@@ -4,7 +4,7 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from database import init_db
-from handlers import start, profile, jobs, transfers, admin, property, education, top, business, events, checkup, common, social, faq
+from handlers import start, profile, jobs, transfers, admin, property, education, top, business, events, checkup, common, social, faq, market, mining
 from tasks.scheduler import start_scheduler
 
 async def health(request): return web.Response(text="OK")
@@ -24,12 +24,13 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    for router_module in [start, profile, jobs, transfers, admin, property, education, top, business, events, checkup, common, social, faq]:
-        dp.include_router(router_module.router)
+    routers = [start, profile, jobs, transfers, admin, property, education, top, business, events, checkup, common, social, faq, market, mining]
+    for r in routers:
+        dp.include_router(r.router)
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Этап 3.5)...")
+    print("Бот Пихта запущен (Этап 3 - Биржа и Майнинг)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
