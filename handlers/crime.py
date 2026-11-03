@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
-from database import get_player, DB_PATH
+from database import get_player, DB_PATH, is_in_prison
 from keyboards import crime_menu
 
 router = Router()
@@ -13,14 +13,14 @@ async def crime_hub(message: Message, state: FSMContext):
     await state.clear() 
     player = await get_player(message.from_user.id)
     
-    if player[18] and player[18] != "None":
-        try:
-            prison_time = datetime.strptime(player[18], "%Y-%m-%d %H:%M:%S")
-            if datetime.utcnow() < prison_time:
-                rem = prison_time - datetime.utcnow()
-                await message.answer(f"⛓ Ты в тюрьме! Осталось: {int(rem.total_seconds()//60)} мин.\nНажми «⚖️ Выйти из тюрьмы», чтобы внести залог.")
-                return
-        except: pass
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        # ВАЖНО: Отправляем меню, чтобы была кнопка "Выйти из тюрьмы"
+        await message.answer(
+            f"⛓ Ты в тюрьме! Осталось: {mins} мин.\nНажми «⚖️ Выйти из тюрьмы», чтобы внести залог.",
+            reply_markup=crime_menu()
+        )
+        return
         
     lockpicks = "✅ Есть" if player[25] == 1 else "❌ Нет"
     hacker_sw = "✅ Есть" if player[26] == 1 else "❌ Нет"
@@ -38,14 +38,18 @@ async def crime_hub(message: Message, state: FSMContext):
 
 @router.message(F.text.contains("Черный рынок"))
 async def black_market(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Купить Отмычки (1000💰)", callback_data="crimebuy_lockpicks")], # ИСПРАВЛЕНО
-        [InlineKeyboardButton(text="Купить Хакерский софт (5000💰)", callback_data="crimebuy_hacker")], # ИСПРАВЛЕНО
-        [InlineKeyboardButton(text="Купить Охрану (5000💰)", callback_data="crimebuy_security")] # ИСПРАВЛЕНО
+        [InlineKeyboardButton(text="Купить Отмычки (1000💰)", callback_data="crimebuy_lockpicks")],
+        [InlineKeyboardButton(text="Купить Хакерский софт (5000💰)", callback_data="crimebuy_hacker")],
+        [InlineKeyboardButton(text="Купить Охрану (5000💰)", callback_data="crimebuy_security")]
     ])
     await message.answer("🛒 **Черный рынок**\n\nЗдесь продаются инструменты для незаконных дел. Без них кражи невозможны!", reply_markup=kb)
 
-@router.callback_query(F.data.startswith("crimebuy_")) # ИСПРАВЛЕНО
+@router.callback_query(F.data.startswith("crimebuy_"))
 async def buy_crime_item(callback: CallbackQuery):
     item = callback.data.split("_")[1]
     player = await get_player(callback.from_user.id)
@@ -77,6 +81,11 @@ async def buy_crime_item(callback: CallbackQuery):
 
 @router.message(F.text.contains("Ограбить игрока"))
 async def try_rob(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
+        
     player = await get_player(message.from_user.id)
     if player[25] == 0:
         await message.answer("❌ У тебя нет отмычек! Купи их на Черном рынке.")
@@ -111,6 +120,11 @@ async def try_rob(message: Message):
 
 @router.message(F.text.contains("Ограбить NPC"))
 async def rob_npc(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
+        
     async with aiosqlite.connect(DB_PATH) as db:
         if random.random() < 0.7: 
             stolen = random.randint(100, 400)
@@ -125,6 +139,11 @@ async def rob_npc(message: Message):
 
 @router.message(F.text.contains("Взломать банк"))
 async def hack_bank(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
+        
     player = await get_player(message.from_user.id)
     if player[26] == 0:
         await message.answer("❌ У тебя нет хакерского софта! Купи его на Черном рынке.")
@@ -145,12 +164,25 @@ async def hack_bank(message: Message):
 @router.message(F.text.contains("Выйти из тюрьмы"))
 async def out_of_jail(message: Message):
     player = await get_player(message.from_user.id)
-    if not player[18]:
+    if not player[18] or player[18] == "None":
         await message.answer("Ты не в тюрьме.")
         return
+        
+    # Проверяем, истек ли срок
+    try:
+        prison_time = datetime.strptime(player[18], "%Y-%m-%d %H:%M:%S")
+        if datetime.utcnow() >= prison_time:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("UPDATE players SET in_prison_until=NULL WHERE user_id=?", (message.from_user.id,))
+                await db.commit()
+            await message.answer("⏳ Твой срок уже истек, ты свободен!")
+            return
+    except: pass
+        
     if player[3] < 2000:
-        await message.answer("❌ Залог стоит 2000 монет. У тебя нет таких денег.")
+        await message.answer("❌ Залог стоит 2000 монет. У тебя нет таких денег, жди конца срока.")
         return
+        
     if random.random() < 0.3:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE players SET balance = balance - 2000 WHERE user_id=?", (message.from_user.id,))
