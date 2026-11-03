@@ -27,7 +27,7 @@ async def show_biz_shop(message: Message):
 async def buy_biz(callback: CallbackQuery):
     biz_id = int(callback.data.split("_")[1])
     player = await get_player(callback.from_user.id)
-    if player[8] > 0:
+    if player[9] > 0: # ИСПРАВЛЕНО: 9
         await callback.answer("У тебя уже есть бизнес. Ты можешь владеть только одним.", show_alert=True)
         return
         
@@ -45,15 +45,15 @@ async def buy_biz(callback: CallbackQuery):
 @router.message(F.text == "🏢 Мои бизнесы")
 async def my_biz(message: Message):
     player = await get_player(message.from_user.id)
-    if player[8] == 0:
+    if player[9] == 0: # ИСПРАВЛЕНО: 9
         await message.answer("У тебя пока нет бизнеса. Купи его во вкладке 'Купить бизнес'.")
         return
         
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT title, income, upkeep FROM businesses WHERE id=?", (player[8],)) as cur:
+        async with db.execute("SELECT title, income, upkeep FROM businesses WHERE id=?", (player[9],)) as cur: # ИСПРАВЛЕНО: 9
             biz = await cur.fetchone()
             
-    lvl = player[9]
+    lvl = player[10] # ИСПРАВЛЕНО: 10
     total_income = biz[1] * lvl
     total_upkeep = biz[2] * lvl
     
@@ -69,15 +69,15 @@ async def my_biz(message: Message):
 @router.callback_query(F.data == "biz_upgrade")
 async def upgrade_biz(callback: CallbackQuery):
     player = await get_player(callback.from_user.id)
-    if player[9] >= 5:
+    if player[10] >= 5: # ИСПРАВЛЕНО: 10
         await callback.answer("Максимальный уровень бизнеса достигнут!", show_alert=True)
         return
         
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT title, buy FROM businesses WHERE id=?", (player[8],)) as cur:
+        async with db.execute("SELECT title, buy FROM businesses WHERE id=?", (player[9],)) as cur: # ИСПРАВЛЕНО: 9
             biz = await cur.fetchone()
             
-    cost = biz[1] * player[9] * 3
+    cost = biz[1] * player[10] * 3 # ИСПРАВЛЕНО: 10
     if player[3] < cost:
         await callback.answer(f"Недостаточно средств для апгрейда! Нужно {cost}.", show_alert=True)
         return
@@ -86,5 +86,5 @@ async def upgrade_biz(callback: CallbackQuery):
         await db.execute("UPDATE players SET balance = balance - ?, business_level = business_level + 1 WHERE user_id=?", (cost, callback.from_user.id))
         await db.commit()
     
-    await callback.answer(f"🚀 Бизнес улучшен до Ур. {player[9]+1}!", show_alert=True)
+    await callback.answer(f"🚀 Бизнес улучшен до Ур. {player[10]+1}!", show_alert=True) # ИСПРАВЛЕНО: 10
     await callback.message.delete()
