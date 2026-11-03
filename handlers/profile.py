@@ -19,7 +19,7 @@ async def show_profile(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title FROM properties WHERE id=?", (prop_id,)) as cur:
             prop = await cur.fetchone()
-            prop_title = prop[0] if prop else "Неизвестно"
+            prop_title = prop[0] if prop else "На улице"
             
         async with db.execute("SELECT title FROM businesses WHERE id=?", (biz_id,)) as cur:
             biz = await cur.fetchone()
@@ -35,4 +35,4 @@ async def show_profile(message: Message):
         f"🎓 Образование: Уровень {edu_level}\n"
         f"🕒 Последний вход: {player[5]}",
         parse_mode="Markdown"
-        )
+    )
