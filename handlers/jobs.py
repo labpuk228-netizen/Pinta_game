@@ -2,7 +2,7 @@ import aiosqlite, random
 from datetime import datetime, timedelta
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from database import get_player, DB_PATH
+from database import get_player, DB_PATH, is_in_prison
 from keyboards import job_menu
 
 router = Router()
@@ -11,6 +11,11 @@ SIDE_PAGE_SIZE = 5
 
 @router.message(F.text == "💼 Работа")
 async def show_jobs_menu(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Работать нельзя. Осталось: {mins} мин.")
+        return
+        
     player = await get_player(message.from_user.id)
     if player[4] > 0:
         text = f"💼 **Твоя текущая работа**\nЗарплата: {player[4]} монет/цикл.\n\nВыбери действие снизу."
@@ -20,6 +25,10 @@ async def show_jobs_menu(message: Message):
 
 @router.message(F.text == "📋 Вакансии")
 async def list_jobs(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
     await render_jobs(message, 0)
 
 async def render_jobs(target, page):
@@ -51,13 +60,18 @@ async def paginate_jobs(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("takejob_"))
 async def take_job(callback: CallbackQuery):
+    in_prison, mins = await is_in_prison(callback.from_user.id)
+    if in_prison:
+        await callback.answer(f"Ты в тюрьме! Осталось {mins} мин.", show_alert=True)
+        return
+        
     job_id = int(callback.data.split("_")[1])
     player = await get_player(callback.from_user.id)
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title, salary, req_edu, req_prop FROM jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
         if player[8] < job[2]:
-            await callback.answer() # Убрали show_alert
+            await callback.answer()
             await callback.message.answer(f"❌ Не хватает образования! Нужен Ур. {job[2]}.")
             return
         if player[7] < job[3]:
@@ -71,6 +85,10 @@ async def take_job(callback: CallbackQuery):
 
 @router.message(F.text == "🛠 Подработки")
 async def list_side_jobs(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Подрабатывать нельзя. Осталось: {mins} мин.")
+        return
     await render_side_jobs(message, 0)
 
 async def render_side_jobs(target, page, earned_msg=""):
@@ -120,6 +138,11 @@ async def noop_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("doside_"))
 async def do_side(callback: CallbackQuery):
+    in_prison, mins = await is_in_prison(callback.from_user.id)
+    if in_prison:
+        await callback.answer(f"Ты в тюрьме!", show_alert=True)
+        return
+        
     parts = callback.data.split("_")
     job_id, page = int(parts[1]), int(parts[2])
     player = await get_player(callback.from_user.id)
