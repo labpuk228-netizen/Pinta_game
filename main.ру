@@ -22,13 +22,12 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    # Подключаем все роутеры
     for r in [start, common, profile, jobs, education, property, business, mining, market]:
         dp.include_router(r.router)
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Блок 3 - Майнинг и Биржа)...")
+    print("Бот Пихта запущен (Блок 3 - Исправленный)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
