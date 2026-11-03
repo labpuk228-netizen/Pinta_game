@@ -5,14 +5,13 @@ from database import DB_PATH
 
 router = Router()
 
+# Ловим и "🏆 Топ", и "Топ"
 @router.message(F.text.contains("Топ"))
 async def show_top(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
-        # Топ по балансу
         async with db.execute("SELECT username, balance FROM players ORDER BY balance DESC LIMIT 5") as cur:
             rich = await cur.fetchall()
             
-        # Топ по бизнесу
         async with db.execute("SELECT username, business_level FROM players WHERE business_id > 0 ORDER BY business_level DESC LIMIT 5") as cur:
             biz = await cur.fetchall()
 
