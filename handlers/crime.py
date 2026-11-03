@@ -1,7 +1,7 @@
 import aiosqlite, random
 from datetime import datetime, timedelta
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from database import get_player, DB_PATH
 from keyboards import crime_menu
 
@@ -11,7 +11,6 @@ router = Router()
 async def crime_hub(message: Message):
     player = await get_player(message.from_user.id)
     
-    # Проверка на тюрьму
     if player[18] and player[18] != "None":
         try:
             prison_time = datetime.strptime(player[18], "%Y-%m-%d %H:%M:%S")
@@ -46,7 +45,6 @@ async def try_rob(message: Message):
         await message.answer("❌ Для подготовки к краже нужны отмычки (стоят 500 монет).")
         return
         
-    # Ищем случайную жертву
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT user_id, balance, has_security FROM players WHERE user_id != ? AND balance > 100", (message.from_user.id,)) as cur:
             victims = await cur.fetchall()
@@ -58,26 +56,21 @@ async def try_rob(message: Message):
     victim = random.choice(victims)
     victim_id, victim_balance, victim_sec = victim
     
-    # Шанс успеха: 50% (если у жертвы нет охраны), 10% (если есть)
     success_chance = 0.1 if victim_sec == 1 else 0.5
     
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE players SET balance = balance - 500 WHERE user_id=?", (message.from_user.id,)) # Трата на отмычки
+        await db.execute("UPDATE players SET balance = balance - 500 WHERE user_id=?", (message.from_user.id,))
         
         if random.random() < success_chance:
-            # Успех
             stolen = int(victim_balance * random.uniform(0.05, 0.15))
             await db.execute("UPDATE players SET balance = balance - ? WHERE user_id=?", (stolen, victim_id))
             await db.execute("UPDATE players SET balance = balance + ? WHERE user_id=?", (stolen, message.from_user.id))
             
-            # Уведомляем жертву (если у нее есть охрана или просто как факт)
-            try:
-                await message.bot.send_message(victim_id, f"🚨 **Тревога!** Тебя ограбили! Неизвестный украл {stolen} монет.")
+            try: await message.bot.send_message(victim_id, f"🚨 **Тревога!** Тебя ограбили! Неизвестный украл {stolen} монет.")
             except: pass
             
             await message.answer(f"🦹 Успех! Ты незаметно выкрал **{stolen}** монет из кармана жертвы.")
         else:
-            # Провал и тюрьма
             prison_until = (datetime.utcnow() + timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
             await db.execute("UPDATE players SET in_prison_until=? WHERE user_id=?", (prison_until, message.from_user.id))
             
