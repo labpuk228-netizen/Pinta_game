@@ -1,6 +1,7 @@
 import aiosqlite
 import random
 import string
+from datetime import datetime
 from config import ADMIN_ID
 
 DB_PATH = "economy.db"
@@ -104,3 +105,15 @@ async def create_player(user_id, username):
         await db.execute("INSERT OR IGNORE INTO players (user_id, username, transfer_code) VALUES (?,?,?)", (user_id, username, code))
         await db.commit()
     return code
+
+# НОВАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ ТЮРЬМЫ
+async def is_in_prison(user_id):
+    player = await get_player(user_id)
+    if player and player[18] and player[18] != "None":
+        try:
+            prison_time = datetime.strptime(player[18], "%Y-%m-%d %H:%M:%S")
+            if datetime.utcnow() < prison_time:
+                rem = prison_time - datetime.utcnow()
+                return True, int(rem.total_seconds() // 60)
+        except: pass
+    return False, 0
