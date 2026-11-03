@@ -10,10 +10,7 @@ router = Router()
 async def mining_hub(message: Message):
     player = await get_player(message.from_user.id)
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("""
-            SELECT SUM(sp.hashrate * rg.amount) FROM mining_rig_gpus rg 
-            JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id=?
-        """, (message.from_user.id,)) as cur:
+        async with db.execute("SELECT SUM(sp.hashrate * rg.amount) FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id=?", (message.from_user.id,)) as cur:
             total_hash = (await cur.fetchone())[0] or 0
             
     btc = player[19] if len(player) > 19 and player[19] else 0.0
@@ -69,7 +66,7 @@ async def shop_category(callback: CallbackQuery):
         if p[4] > 0: stats.append(f"Ватт: {p[4]}")
         if p[5] > 0: stats.append(f"Слотов: {p[5]}")
         text += f"**{p[1]}**\nЦена: {p[2]} 💰 | {', '.join(stats)}\n\n"
-        kb.append([InlineKeyboardButton(text=f"Купить за {p[2]}", callback_data=f"buy_{p[0]}")])
+        kb.append([InlineKeyboardButton(text=f"Купить за {p[2]}", callback_data=f"buypart_{p[0]}")]) # ИСПРАВЛЕНО
     kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="shopback")])
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -80,7 +77,7 @@ async def shop_back(callback: CallbackQuery):
     await callback.message.edit_text("🛒 **Магазин комплектующих**\nВыбери категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
 
-@router.callback_query(F.data.startswith("buy_"))
+@router.callback_query(F.data.startswith("buypart_")) # ИСПРАВЛЕНО
 async def buy_part(callback: CallbackQuery):
     part_id = int(callback.data.split("_")[1])
     player = await get_player(callback.from_user.id)
