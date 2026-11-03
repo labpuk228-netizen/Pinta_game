@@ -30,10 +30,21 @@ async def init_db():
             cooldown INTEGER, req_edu INTEGER, req_prop INTEGER, no_cooldown_edu INTEGER DEFAULT 99
         );
         CREATE TABLE IF NOT EXISTS side_cooldowns (user_id INTEGER, job_id INTEGER, last_done TIMESTAMP, PRIMARY KEY (user_id, job_id));
+        
         CREATE TABLE IF NOT EXISTS mining_shop (id INTEGER PRIMARY KEY, part_type TEXT, name TEXT, price INTEGER, hashrate REAL, wattage INTEGER, slots INTEGER);
         CREATE TABLE IF NOT EXISTS mining_inventory (user_id INTEGER, part_id INTEGER, amount INTEGER DEFAULT 1, PRIMARY KEY (user_id, part_id));
-        CREATE TABLE IF NOT EXISTS mining_rigs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, mb_id INTEGER DEFAULT 0, psu_id INTEGER DEFAULT 0, cpu_id INTEGER DEFAULT 0);
-        CREATE TABLE IF NOT EXISTS mining_rig_gpus (rig_id INTEGER, part_id INTEGER, amount INTEGER DEFAULT 1, PRIMARY KEY (rig_id, part_id));
+        
+        -- ДОБАВЛЕН ИЗНОС ДЕТАЛЕЙ
+        CREATE TABLE IF NOT EXISTS mining_rigs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, 
+            mb_id INTEGER DEFAULT 0, psu_id INTEGER DEFAULT 0, cpu_id INTEGER DEFAULT 0,
+            mb_cond REAL DEFAULT 100.0, psu_cond REAL DEFAULT 100.0, cpu_cond REAL DEFAULT 100.0
+        );
+        CREATE TABLE IF NOT EXISTS mining_rig_gpus (
+            rig_id INTEGER, part_id INTEGER, amount INTEGER DEFAULT 1, cond REAL DEFAULT 100.0,
+            PRIMARY KEY (rig_id, part_id)
+        );
+        
         CREATE TABLE IF NOT EXISTS crypto_assets (symbol TEXT PRIMARY KEY, name TEXT, price REAL, volatility REAL);
         CREATE TABLE IF NOT EXISTS stock_assets (symbol TEXT PRIMARY KEY, name TEXT, price REAL, volatility REAL);
         CREATE TABLE IF NOT EXISTS market_portfolio (user_id INTEGER, symbol TEXT, amount REAL DEFAULT 0, PRIMARY KEY (user_id, symbol));
@@ -44,6 +55,7 @@ async def init_db():
         CREATE TABLE IF NOT EXISTS admins (user_id INTEGER PRIMARY KEY);
         """)
         
+        # Миграции
         columns = [
             "property_id INTEGER DEFAULT 0", "education_level INTEGER DEFAULT 0", "business_id INTEGER DEFAULT 0", 
             "business_level INTEGER DEFAULT 1", "last_side_job TIMESTAMP", "last_fortune TIMESTAMP", "last_crime TIMESTAMP",
@@ -58,6 +70,16 @@ async def init_db():
             except aiosqlite.OperationalError: pass
 
         try: await db.execute("ALTER TABLE side_jobs ADD COLUMN no_cooldown_edu INTEGER DEFAULT 99")
+        except aiosqlite.OperationalError: pass
+        
+        # Миграции для износа
+        try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN mb_cond REAL DEFAULT 100.0")
+        except aiosqlite.OperationalError: pass
+        try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN psu_cond REAL DEFAULT 100.0")
+        except aiosqlite.OperationalError: pass
+        try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN cpu_cond REAL DEFAULT 100.0")
+        except aiosqlite.OperationalError: pass
+        try: await db.execute("ALTER TABLE mining_rig_gpus ADD COLUMN cond REAL DEFAULT 100.0")
         except aiosqlite.OperationalError: pass
 
         await db.execute("INSERT OR IGNORE INTO system_state (key, value) VALUES ('season', 'Лето')")
@@ -106,7 +128,6 @@ async def create_player(user_id, username):
         await db.commit()
     return code
 
-# НОВАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ ТЮРЬМЫ
 async def is_in_prison(user_id):
     player = await get_player(user_id)
     if player and player[18] and player[18] != "None":
