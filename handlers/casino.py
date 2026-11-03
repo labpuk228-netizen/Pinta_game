@@ -137,12 +137,12 @@ async def lottery_menu(message: Message):
             jackpot = int((await cur.fetchone())[0])
             
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎟 Купить билет (100💰)", callback_data="buy_ticket")],
+        [InlineKeyboardButton(text="🎟 Купить билет (100💰)", callback_data="lottery_ticket")], # ИСПРАВЛЕНО
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="casino_back")]
     ])
     await message.answer(f"🎟 **Лотерея**\n\nТекущий джекпот: **{jackpot}** монет!\nБилет стоит 100 монет. Шанс выигрыша: 5%.", parse_mode="Markdown", reply_markup=kb)
 
-@router.callback_query(F.data == "buy_ticket")
+@router.callback_query(F.data == "lottery_ticket") # ИСПРАВЛЕНО
 async def buy_ticket(callback: CallbackQuery):
     player = await get_player(callback.from_user.id)
     if player[3] < 100:
@@ -167,7 +167,7 @@ async def buy_ticket(callback: CallbackQuery):
         await db.commit()
         
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎟 Купить билет (100💰)", callback_data="buy_ticket")],
+        [InlineKeyboardButton(text="🎟 Купить билет (100💰)", callback_data="lottery_ticket")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="casino_back")]
     ])
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
