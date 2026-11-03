@@ -8,21 +8,27 @@ router = Router()
 @router.message(F.text == "🎓 Образование")
 async def show_education(message: Message):
     player = await get_player(message.from_user.id)
-    current_edu = player[8] # ИСПРАВЛЕНО: 8
+    current_edu = player[8]
     
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT id, title, cost, level FROM educations") as cur:
+        async with db.execute("SELECT id, title, cost, level FROM educations ORDER BY level ASC") as cur:
             edus = await cur.fetchall()
 
-    text = f"🎓 **Образование**\nТвой текущий уровень: {current_edu}\n\n"
+    text = f"🎓 **Образование**\nТвой текущий уровень: **{current_edu}**\n\n"
     kb = []
+    last_lvl = 0
     
     for e in edus:
-        if current_edu >= e[3]:
-            text += f"✅ **{e[1]}** (Уровень {e[3]}) — изучено\n"
+        lvl = e[3]
+        if lvl > last_lvl:
+            text += f"\n🔹 **Уровень {lvl}:**\n"
+            last_lvl = lvl
+            
+        if current_edu >= lvl:
+            text += f"✅ {e[1]}\n"
         else:
-            text += f"**{e[1]}** — Цена: {e[2]} монет (Уровень {e[3]})\n"
-            kb.append([InlineKeyboardButton(text=f"Купить: {e[1]}", callback_data=f"study_{e[0]}")])
+            text += f▪️ {e[1]} — {e[2]} 💰\n"
+            kb.append([InlineKeyboardButton(text=f"Купить: {e[1]} ({e[2]})", callback_data=f"study_{e[0]}")])
     
     reply_markup = InlineKeyboardMarkup(inline_keyboard=kb) if kb else None
     await message.answer(text, parse_mode="Markdown", reply_markup=reply_markup)
@@ -40,8 +46,9 @@ async def study_callback(callback: CallbackQuery):
             await callback.answer(f"Недостаточно средств! Нужно {edu[1]} монет.", show_alert=True)
             return
         
+        # Обновляем уровень образования
         await db.execute("UPDATE players SET balance = balance - ?, education_level=? WHERE user_id=?", (edu[1], edu[2], callback.from_user.id))
         await db.commit()
     
-    await callback.answer(f"🎓 Ты прошел курс: {edu[0]}!", show_alert=True)
+    await callback.answer(f"🎓 Ты прошел обучение: {edu[0]}!\nТвой уровень образования повышен до {edu[2]}.", show_alert=True)
     await callback.message.delete()
