@@ -3,7 +3,7 @@ import aiosqlite
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
-from database import get_player, DB_PATH
+from database import get_player, DB_PATH, is_in_prison
 from keyboards import casino_menu
 from states import CasinoState
 
@@ -12,6 +12,11 @@ router = Router()
 @router.message(F.text.contains("Казино"))
 async def casino_hub(message: Message, state: FSMContext):
     await state.clear()
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Казино закрыто. Осталось: {mins} мин.")
+        return
+        
     player = await get_player(message.from_user.id)
     await message.answer(
         f"🎲 **Добро пожаловать в казино!**\n\n"
@@ -49,6 +54,10 @@ async def process_bet(message: Message, state: FSMContext):
 
 @router.message(F.text.contains("Рулетка"))
 async def roulette_menu(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔴 Красное (x2)", callback_data="roul_red")],
         [InlineKeyboardButton(text="⚫ Черное (x2)", callback_data="roul_black")],
@@ -96,6 +105,10 @@ async def play_roulette(callback: CallbackQuery):
 
 @router.message(F.text.contains("Кости"))
 async def dice_menu(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
     player = await get_player(message.from_user.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎲 Бросить кубик", callback_data="roll_dice")],
@@ -132,17 +145,21 @@ async def play_dice(callback: CallbackQuery):
 
 @router.message(F.text.contains("Лотерея"))
 async def lottery_menu(message: Message):
+    in_prison, mins = await is_in_prison(message.from_user.id)
+    if in_prison:
+        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
+        return
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM system_state WHERE key='jackpot'") as cur:
             jackpot = int((await cur.fetchone())[0])
             
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎟 Купить билет (100💰)", callback_data="lottery_ticket")], # ИСПРАВЛЕНО
+        [InlineKeyboardButton(text="🎟 Купить билет (100💰)", callback_data="lottery_ticket")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="casino_back")]
     ])
     await message.answer(f"🎟 **Лотерея**\n\nТекущий джекпот: **{jackpot}** монет!\nБилет стоит 100 монет. Шанс выигрыша: 5%.", parse_mode="Markdown", reply_markup=kb)
 
-@router.callback_query(F.data == "lottery_ticket") # ИСПРАВЛЕНО
+@router.callback_query(F.data == "lottery_ticket")
 async def buy_ticket(callback: CallbackQuery):
     player = await get_player(callback.from_user.id)
     if player[3] < 100:
