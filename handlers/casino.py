@@ -13,7 +13,6 @@ router = Router()
 async def casino_hub(message: Message):
     await message.answer("🎲 **Добро пожаловать в казино!**\n\nВыбери игру снизу.", reply_markup=casino_menu())
 
-# --- РУЛЕТКА ---
 @router.message(F.text.contains("Рулетка"))
 async def ask_roulette_bet(message: Message, state: FSMContext):
     await state.set_state(CasinoState.waiting_bet)
@@ -35,6 +34,7 @@ async def process_roulette_bet(message: Message, state: FSMContext):
         return
         
     await state.update_data(bet=bet)
+    # НЕ ОЧИЩАЕМ СТЕЙТ ЗДЕСЬ!
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔴 Красное (x2)", callback_data="roul_red")],
@@ -42,19 +42,20 @@ async def process_roulette_bet(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="🟢 Зеро (x14)", callback_data="roul_zero")]
     ])
     await message.answer(f"Ставка: **{bet}** монет.\nВыбери цвет:", parse_mode="Markdown", reply_markup=kb)
-    await state.clear()
 
 @router.callback_query(F.data.startswith("roul_"))
-async def play_roulette(callback: CallbackQuery):
-    try:
-        bet = int(callback.message.text.split("Ставка: **")[1].split("**")[0])
-    except:
-        await callback.answer("Ошибка ставки. Начни заново.", show_alert=False)
+async def play_roulette(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    bet = data.get('bet')
+    
+    if not bet:
+        await callback.message.edit_text("❌ Ошибка ставки. Начни игру заново.")
         return
 
     player = await get_player(callback.from_user.id)
     if player[3] < bet:
         await callback.message.edit_text("❌ Недостаточно монет!")
+        await state.clear()
         return
     
     choice = callback.data.split("_")[1]
@@ -84,9 +85,9 @@ async def play_roulette(callback: CallbackQuery):
         await db.commit()
         
     await callback.message.edit_text(text, parse_mode="Markdown")
+    await state.clear() # Очищаем только теперь
     await callback.answer()
 
-# --- КОСТИ ---
 @router.message(F.text.contains("Кости"))
 async def ask_dice_bet(message: Message, state: FSMContext):
     await state.set_state(DiceState.waiting_bet)
