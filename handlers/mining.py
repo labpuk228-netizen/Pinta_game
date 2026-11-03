@@ -98,10 +98,11 @@ async def sell_part(callback: CallbackQuery):
         await db.commit()
         
     await callback.answer(f"✅ Продано 1 {name} за {sell_price} монет!", show_alert=True)
-    try: await callback.message.delete()
-    except: pass
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
 
-# ... (ОСТАЛЬНОЙ КОД МАЙНИНГА С ИЗМЕНЕННЫМ СНЯТИЕМ ДЕТАЛЕЙ)
 @router.message(F.text.contains("Сменить монету"))
 async def change_coin_menu(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -168,7 +169,6 @@ async def buy_part(callback: CallbackQuery):
             await callback.message.answer("❌ Недостаточно монет!")
             return
         await db.execute("UPDATE players SET balance = balance - ? WHERE user_id=?", (part[1], callback.from_user.id))
-        # Добавляем новую деталь в инвентарь со 100% состоянием
         await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
         await db.commit()
     await callback.answer()
@@ -329,7 +329,6 @@ async def remove_part(callback: CallbackQuery):
                     
                 if part_id:
                     await db.execute(f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?", (rig_id,))
-                    # ВОЗВРАЩАЕМ В ИНВЕНТАРЬ С СОХРАНЕНИЕМ ИЗНОСА
                     async with db.execute("SELECT amount, cond FROM mining_inventory WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id)) as cur:
                         inv = await cur.fetchone()
                     if inv:
@@ -346,4 +345,6 @@ async def remove_part(callback: CallbackQuery):
                     amt = row[0] if row else 0
                     cond = row[1] if row else 100.0
                     
-             
+                if amt > 0:
+                    await db.execute("DELETE FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id))
+                    async with db
