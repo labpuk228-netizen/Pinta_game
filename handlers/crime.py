@@ -2,13 +2,15 @@ import aiosqlite, random
 from datetime import datetime, timedelta
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
 from database import get_player, DB_PATH
 from keyboards import crime_menu
 
 router = Router()
 
 @router.message(F.text.contains("Криминал"))
-async def crime_hub(message: Message):
+async def crime_hub(message: Message, state: FSMContext):
+    await state.clear() 
     player = await get_player(message.from_user.id)
     
     if player[18] and player[18] != "None":
@@ -34,7 +36,6 @@ async def crime_hub(message: Message):
         parse_mode="Markdown", reply_markup=crime_menu()
     )
 
-# --- ЧЕРНЫЙ РЫНОК ---
 @router.message(F.text.contains("Черный рынок"))
 async def black_market(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -58,29 +59,22 @@ async def buy_crime_item(callback: CallbackQuery):
         
     async with aiosqlite.connect(DB_PATH) as db:
         if item == "lockpicks":
-            if player[25] == 1:
-                await callback.message.answer("✅ У тебя уже есть отмычки.")
-                return
+            if player[25] == 1: return await callback.message.answer("✅ У тебя уже есть отмычки.")
             await db.execute("UPDATE players SET balance = balance - ?, has_lockpicks = 1 WHERE user_id=?", (cost, callback.from_user.id))
-            text = "🔓 Куплены отмычки! Теперь ты можешь грабить игроков."
+            text = "🔓 Куплены отмычки!"
         elif item == "hacker":
-            if player[26] == 1:
-                await callback.message.answer("✅ У тебя уже есть хакерский софт.")
-                return
+            if player[26] == 1: return await callback.message.answer("✅ У тебя уже есть хакерский софт.")
             await db.execute("UPDATE players SET balance = balance - ?, has_hacker_software = 1 WHERE user_id=?", (cost, callback.from_user.id))
-            text = "💻 Куплен хакерский софт! Теперь ты можешь попытаться взломать банк."
+            text = "💻 Куплен хакерский софт!"
         elif item == "security":
-            if player[24] == 1:
-                await callback.message.answer("✅ У тебя уже есть охрана.")
-                return
+            if player[24] == 1: return await callback.message.answer("✅ У тебя уже есть охрана.")
             await db.execute("UPDATE players SET balance = balance - ?, has_security = 1 WHERE user_id=?", (cost, callback.from_user.id))
-            text = "🛡 Охрана нанята! Тебя будет сложнее ограбить."
+            text = "🛡 Охрана нанята!"
             
         await db.commit()
     await callback.message.edit_text(text)
     await callback.answer()
 
-# --- ОГРАБЛЕНИЯ ---
 @router.message(F.text.contains("Ограбить игрока"))
 async def try_rob(message: Message):
     player = await get_player(message.from_user.id)
@@ -108,7 +102,6 @@ async def try_rob(message: Message):
             await message.answer(f"🦹 Успех! Ты выкрал **{stolen}** монет. (Репутация -5)")
         else:
             prison_until = (datetime.utcnow() + timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
-            # Забираем отмычки при провале
             await db.execute("UPDATE players SET in_prison_until=?, reputation = reputation - 15, has_lockpicks = 0 WHERE user_id=?", (prison_until, message.from_user.id))
             if victim_sec == 1:
                 try: await message.bot.send_message(victim_id, "🛡 Твоя охрана задержала вора! Он отправлен в тюрьму.")
@@ -144,7 +137,6 @@ async def hack_bank(message: Message):
             text = f"💻 **ДЖЕКПОТ!** Ты взломал банк и перевел **{stolen}** монет на свой счет! (Репутация -20)"
         else:
             prison_until = (datetime.utcnow() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
-            # Забираем софт при провале
             await db.execute("UPDATE players SET in_prison_until=?, reputation = reputation - 30, has_hacker_software = 0 WHERE user_id=?", (prison_until, message.from_user.id))
             text = "🚔 **ПРОВАЛ!** Киберполиция отследила твой IP. Тюрьма на 30 минут. (Репутация -30, Софт уничтожен)"
         await db.commit()
