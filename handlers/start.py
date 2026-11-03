@@ -1,7 +1,7 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
-from database import create_player, get_player, update_online
+from database import create_player, get_player
 from keyboards import main_menu
 
 router = Router()
@@ -10,6 +10,7 @@ router = Router()
 async def cmd_start(message: Message):
     user_id = message.from_user.id
     player = await get_player(user_id)
+    
     if not player:
         code = await create_player(user_id, message.from_user.username or "player")
         await message.answer(
@@ -21,5 +22,5 @@ async def cmd_start(message: Message):
             reply_markup=main_menu()
         )
     else:
-        await update_online(user_id)
-        await message.answer("С возвращением в Пихту! 🌲", reply_markup=main_menu())
+        is_adm = player[18] if len(player) > 18 else False
+        await message.answer("С возвращением в Пихту! 🌲", reply_markup=main_menu(is_adm))
