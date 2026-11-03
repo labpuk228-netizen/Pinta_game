@@ -56,7 +56,6 @@ async def withdraw_crypto(message: Message):
         
     await message.answer(f"✅ Выведено в портфель:\n🪙 BTC: {btc:.6f}\n🪙 ETH: {eth:.6f}\n🪙 DOGE: {doge:.4f}\n\nТеперь ты можешь продать их на Бирже.")
 
-# --- ПРОДАЖА ДЕТАЛЕЙ ---
 @router.message(F.text.contains("Продать детали"))
 async def sell_parts_menu(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -70,7 +69,6 @@ async def sell_parts_menu(message: Message):
     text = "💸 **Продажа деталей**\n\n"
     kb = []
     for i in items:
-        # Цена продажи: 50% от рыночной стоимости, умноженные на процент износа
         sell_price = int(i[4] * 0.5 * (i[3] / 100.0))
         text += f"▪️ **{i[1]}** (x{i[2]})\nСостояние: {i[3]:.1f}% | Продажа за 1 шт: {sell_price} 💰\n\n"
         kb.append([InlineKeyboardButton(text=f"Продать {i[1]} (+{sell_price}💰)", callback_data=f"sellpart_{i[0]}")])
@@ -347,4 +345,4 @@ async def remove_part(callback: CallbackQuery):
                     
                 if amt > 0:
                     await db.execute("DELETE FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id))
-                    async with db
+                    async with db.execute("SELECT amount, cond FROM mining_inventory WHERE user_id=? AND part_id=?", (callback.from_user.id
