@@ -14,15 +14,14 @@ async def mining_hub(message: Message):
         return
         
     player = await get_player(message.from_user.id)
-    query = """
-        SELECT SUM(sp.hashrate * rg.amount) 
-        FROM mining_rig_gpus rg 
-        JOIN mining_rigs r ON rg.rig_id = r.id 
-        JOIN mining_shop sp ON rg.part_id = sp.id 
-        WHERE r.user_id=?
-    """
+    sql = "SELECT SUM(sp.hashrate * rg.amount) "
+    sql += "FROM mining_rig_gpus rg "
+    sql += "JOIN mining_rigs r ON rg.rig_id = r.id "
+    sql += "JOIN mining_shop sp ON rg.part_id = sp.id "
+    sql += "WHERE r.user_id=?"
+    
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(query, (message.from_user.id,)) as cur:
+        async with db.execute(sql, (message.from_user.id,)) as cur:
             total_hash = (await cur.fetchone())[0] or 0
             
     btc = player[19] if len(player) > 19 and player[19] else 0.0
@@ -52,11 +51,14 @@ async def withdraw_crypto(message: Message):
         
     async with aiosqlite.connect(DB_PATH) as db:
         if btc > 0:
-            await db.execute("INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'BTC', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?", (message.from_user.id, btc, btc))
+            sql = "INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'BTC', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?"
+            await db.execute(sql, (message.from_user.id, btc, btc))
         if eth > 0:
-            await db.execute("INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'ETH', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?", (message.from_user.id, eth, eth))
+            sql = "INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'ETH', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?"
+            await db.execute(sql, (message.from_user.id, eth, eth))
         if doge > 0:
-            await db.execute("INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'DOGE', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?", (message.from_user.id, doge, doge))
+            sql = "INSERT INTO market_portfolio (user_id, symbol, amount) VALUES (?, 'DOGE', ?) ON CONFLICT(user_id, symbol) DO UPDATE SET amount = amount + ?"
+            await db.execute(sql, (message.from_user.id, doge, doge))
             
         await db.execute("UPDATE players SET crypto_btc = 0, crypto_eth = 0, crypto_doge = 0 WHERE user_id=?", (message.from_user.id,))
         await db.commit()
@@ -65,8 +67,12 @@ async def withdraw_crypto(message: Message):
 
 @router.message(F.text.contains("Продать детали"))
 async def sell_parts_menu(message: Message):
+    sql = "SELECT sp.id, sp.name, i.amount, i.cond, sp.price "
+    sql += "FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id "
+    sql += "WHERE i.user_id=?"
+    
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT sp.id, sp.name, i.amount, i.cond, sp.price FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id WHERE i.user_id=?", (message.from_user.id,)) as cur:
+        async with db.execute(sql, (message.from_user.id,)) as cur:
             items = await cur.fetchall()
             
     if not items:
@@ -86,8 +92,12 @@ async def sell_parts_menu(message: Message):
 async def sell_part(callback: CallbackQuery):
     part_id = int(callback.data.split("_")[1])
     
+    sql = "SELECT i.amount, i.cond, sp.price, sp.name "
+    sql += "FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id "
+    sql += "WHERE i.user_id=? AND i.part_id=?"
+    
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT i.amount, i.cond, sp.price, sp.name FROM mining_inventory i JOIN mining_shop sp ON i.part_id = sp.id WHERE i.user_id=? AND i.part_id=?", (callback.from_user.id, part_id)) as cur:
+        async with db.execute(sql, (callback.from_user.id, part_id)) as cur:
             row = await cur.fetchone()
             
         if not row or row[0] <= 0:
@@ -139,9 +149,13 @@ async def shop_menu(message: Message):
 @router.callback_query(F.data.startswith("shopcat_"))
 async def shop_category(callback: CallbackQuery):
     cat = callback.data.split("_")[1]
+    sql = "SELECT id, name, price, hashrate, wattage, slots "
+    sql += "FROM mining_shop WHERE part_type=?"
+    
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT id, name, price, hashrate, wattage, slots FROM mining_shop WHERE part_type=?", (cat,)) as cur:
+        async with db.execute(sql, (cat,)) as cur:
             parts = await cur.fetchall()
+            
     text = f"📦 **Товары:**\n\n"
     kb = []
     for p in parts:
@@ -174,7 +188,10 @@ async def buy_part(callback: CallbackQuery):
             await callback.message.answer("❌ Недостаточно монет!")
             return
         await db.execute("UPDATE players SET balance = balance - ? WHERE user_id=?", (part[1], callback.from_user.id))
-        await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1", (callback.from_user.id, part_id))
+        
+        sql = "INSERT INTO mining_inventory (user_id, part_id, amount, cond) VALUES (?, ?, 1, 100.0) "
+        sql += "ON CONFLICT(user_id, part_id) DO UPDATE SET amount = amount + 1"
+        await db.execute(sql, (callback.from_user.id, part_id))
         await db.commit()
     await callback.answer()
     await callback.message.answer(f"✅ Куплено: {part[0]}")
@@ -208,9 +225,14 @@ async def back_rigs(callback: CallbackQuery):
 
 @router.callback_query(F.data == "create_rig")
 async def create_rig(callback: CallbackQuery):
+    sql = "SELECT i.part_id, s.name FROM mining_inventory i "
+    sql += "JOIN mining_shop s ON i.part_id = s.id "
+    sql += "WHERE i.user_id=? AND s.part_type='case'"
+    
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT i.part_id, s.name FROM mining_inventory i JOIN mining_shop s ON i.part_id = s.id WHERE i.user_id=? AND s.part_type='case'", (callback.from_user.id,)) as cur:
+        async with db.execute(sql, (callback.from_user.id,)) as cur:
             cases = await cur.fetchall()
+            
     if not cases:
         await callback.answer()
         await callback.message.answer("❌ У тебя нет купленных корпусов!")
@@ -235,10 +257,21 @@ async def do_create_rig(callback: CallbackQuery):
     await _render_rigs(callback)
 
 async def _render_rig_config(target, rig_id):
+    sql = "SELECT r.name, p_mb.name, p_mb.slots, p_psu.name, p_psu.wattage, p_cpu.name, p_cpu.hashrate, r.mb_id, r.psu_id, r.cpu_id "
+    sql += "FROM mining_rigs r "
+    sql += "LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id "
+    sql += "LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id "
+    sql += "LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id "
+    sql += "WHERE r.id=?"
+    
+    gpu_sql = "SELECT SUM(sp.wattage * rg.amount), SUM(sp.hashrate * rg.amount), SUM(rg.amount) "
+    gpu_sql += "FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id "
+    gpu_sql += "WHERE rg.rig_id=?"
+    
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT r.name, p_mb.name, p_mb.slots, p_psu.name, p_psu.wattage, p_cpu.name, p_cpu.hashrate, r.mb_id, r.psu_id, r.cpu_id FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?", (rig_id,)) as cur:
+        async with db.execute(sql, (rig_id,)) as cur:
             rig = await cur.fetchone()
-        async with db.execute("SELECT SUM(sp.wattage * rg.amount), SUM(sp.hashrate * rg.amount), SUM(rg.amount) FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?", (rig_id,)) as cur:
+        async with db.execute(gpu_sql, (rig_id,)) as cur:
             gpu_stats = await cur.fetchone()
             
     mb_slots = rig[2] if rig[2] else 0
@@ -272,10 +305,21 @@ async def rig_config(callback: CallbackQuery):
 async def show_condition(callback: CallbackQuery):
     try:
         rig_id = int(callback.data.split("_")[1])
+        
+        sql = "SELECT p_mb.name, r.mb_cond, p_psu.name, r.psu_cond, p_cpu.name, r.cpu_cond "
+        sql += "FROM mining_rigs r "
+        sql += "LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id "
+        sql += "LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id "
+        sql += "LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id "
+        sql += "WHERE r.id=?"
+        
+        gpu_sql = "SELECT sp.name, rg.cond, rg.amount FROM mining_rig_gpus rg "
+        gpu_sql += "JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?"
+        
         async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT p_mb.name, r.mb_cond, p_psu.name, r.psu_cond, p_cpu.name, r.cpu_cond FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?", (rig_id,)) as cur:
+            async with db.execute(sql, (rig_id,)) as cur:
                 rig = await cur.fetchone()
-            async with db.execute("SELECT sp.name, rg.cond, rg.amount FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?", (rig_id,)) as cur:
+            async with db.execute(gpu_sql, (rig_id,)) as cur:
                 gpus = await cur.fetchall()
                 
         text = f"📊 **Состояние деталей:**\n\n"
@@ -327,8 +371,8 @@ async def remove_part(callback: CallbackQuery):
         
         async with aiosqlite.connect(DB_PATH) as db:
             if ptype in ("mb", "psu", "cpu"):
-                query = f"SELECT {ptype}_id, {ptype}_cond FROM mining_rigs WHERE id=?"
-                async with db.execute(query, (rig_id,)) as cur:
+                sql = f"SELECT {ptype}_id, {ptype}_cond FROM mining_rigs WHERE id=?"
+                async with db.execute(sql, (rig_id,)) as cur:
                     row = await cur.fetchone()
                     part_id = row[0] if row else 0
                     cond = row[1] if row else 100.0
@@ -337,22 +381,12 @@ async def remove_part(callback: CallbackQuery):
                     update_q = f"UPDATE mining_rigs SET {ptype}_id=0, {ptype}_cond=100.0 WHERE id=?"
                     await db.execute(update_q, (rig_id,))
                     
-                    async with db.execute("SELECT amount, cond FROM mining_inventory WHERE user_id=? AND part_id=?", (callback.from_user.id, part_id)) as cur:
+                    inv_sql = "SELECT amount, cond FROM mining_inventory WHERE user_id=? AND part_id=?"
+                    async with db.execute(inv_sql, (callback.from_user.id, part_id)) as cur:
                         inv = await cur.fetchone()
                         
                     if inv:
                         new_amount = inv[0] + 1
                         avg_cond = (inv[0] * inv[1] + cond) / new_amount
-                        await db.execute("UPDATE mining_inventory SET amount=?, cond=? WHERE user_id=? AND part_id=?", (new_amount, avg_cond, callback.from_user.id, part_id))
-                    else:
-                        await db.execute("INSERT INTO mining_inventory (user_id, part_id, amount, cond) VALUES (?, ?, 1, ?)", (callback.from_user.id, part_id, cond))
-                        
-            elif ptype == "gpu":
-                part_id = int(parts[3])
-                async with db.execute("SELECT amount, cond FROM mining_rig_gpus WHERE rig_id=? AND part_id=?", (rig_id, part_id)) as cur:
-                    row = await cur.fetchone()
-                    amt = row[0] if row else 0
-                    cond = row[1] if row else 100.0
-                    
-                if amt > 0:
-                    await db.execute("DELETE FROM mining_rig_gpus W
+                        up_sql = "UPDATE mining_inventory SET amount=?, cond=? WHERE user_id=? AND part_id=?"
+                        await db.execute(up_sql, (new_amount, avg_cond, 
