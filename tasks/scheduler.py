@@ -15,18 +15,26 @@ async def process_cycle():
                 COALESCE((SELECT upkeep FROM businesses WHERE businesses.id = players.business_id), 0) * business_level
             ) WHERE business_id > 0
         """)
-        await db.execute("UPDATE players SET balance = balance - 5")
+        await db.execute("UPDATE players SET balance = balance - 50")
         
-        # МАЙНИНГ
+        # МАЙНИНГ (Дробные части)
         await db.execute("""
-            UPDATE players 
-            SET crypto_btc = COALESCE(crypto_btc, 0) + (
+            UPDATE players SET crypto_btc = COALESCE(crypto_btc, 0) + (
+                SELECT COALESCE(SUM(sp.hashrate * rg.amount), 0) * 0.001 
+                FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id = players.user_id
+            ) WHERE mining_coin = 'BTC'
+        """)
+        await db.execute("""
+            UPDATE players SET crypto_eth = COALESCE(crypto_eth, 0) + (
+                SELECT COALESCE(SUM(sp.hashrate * rg.amount), 0) * 0.01 
+                FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id = players.user_id
+            ) WHERE mining_coin = 'ETH'
+        """)
+        await db.execute("""
+            UPDATE players SET crypto_doge = COALESCE(crypto_doge, 0) + (
                 SELECT COALESCE(SUM(sp.hashrate * rg.amount), 0) * 0.5 
-                FROM mining_rig_gpus rg 
-                JOIN mining_rigs r ON rg.rig_id = r.id 
-                JOIN mining_shop sp ON rg.part_id = sp.id 
-                WHERE r.user_id = players.user_id
-            )
+                FROM mining_rig_gpus rg JOIN mining_rigs r ON rg.rig_id = r.id JOIN mining_shop sp ON rg.part_id = sp.id WHERE r.user_id = players.user_id
+            ) WHERE mining_coin = 'DOGE'
         """)
         await db.commit()
 
