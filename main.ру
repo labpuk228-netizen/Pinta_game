@@ -4,10 +4,15 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from database import init_db
-from handlers import start, profile, jobs, transfers, admin, property, education, top, business, events, checkup, common, social, faq, market, mining
+from handlers import (
+    start, profile, jobs, transfers, admin, property, 
+    education, top, business, events, checkup, common, 
+    social, faq, market, mining
+)
 from tasks.scheduler import start_scheduler
 
-async def health(request): return web.Response(text="OK")
+async def health(request): 
+    return web.Response(text="OK")
 
 async def start_web_server():
     app = web.Application()
@@ -24,13 +29,18 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    routers = [start, profile, jobs, transfers, admin, property, education, top, business, events, checkup, common, social, faq, market, mining]
+    # Подключаем абсолютно все роутеры
+    routers = [
+        start, profile, jobs, transfers, admin, property, 
+        education, top, business, events, checkup, common, 
+        social, faq, market, mining
+    ]
     for r in routers:
         dp.include_router(r.router)
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Этап 3 - Биржа и Майнинг)...")
+    print("Бот Пихта запущен (Полная версия без NPC)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
