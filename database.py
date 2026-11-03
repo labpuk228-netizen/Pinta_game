@@ -18,7 +18,7 @@ async def init_db():
             reputation INTEGER DEFAULT 100, in_prison_until TIMESTAMP,
             crypto_btc REAL DEFAULT 0, crypto_eth REAL DEFAULT 0, stock_pinta REAL DEFAULT 0,
             mining_coin TEXT DEFAULT 'BTC', crypto_doge REAL DEFAULT 0, has_security INTEGER DEFAULT 0,
-            has_lockpicks INTEGER DEFAULT 0, has_hacker_software INTEGER DEFAULT 0
+            has_lockpicks INTEGER DEFAULT 0, has_hacker_software INTEGER DEFAULT 0, current_bet INTEGER DEFAULT 100
         );
         CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY, title TEXT, salary INTEGER, req_edu INTEGER, req_prop INTEGER);
         CREATE TABLE IF NOT EXISTS properties (id INTEGER PRIMARY KEY, title TEXT, rent INTEGER, buy INTEGER, comfort INTEGER);
@@ -50,7 +50,7 @@ async def init_db():
             "reputation INTEGER DEFAULT 100", "in_prison_until TIMESTAMP",
             "crypto_btc REAL DEFAULT 0", "crypto_eth REAL DEFAULT 0", "stock_pinta REAL DEFAULT 0",
             "mining_coin TEXT DEFAULT 'BTC'", "crypto_doge REAL DEFAULT 0", "has_security INTEGER DEFAULT 0",
-            "has_lockpicks INTEGER DEFAULT 0", "has_hacker_software INTEGER DEFAULT 0"
+            "has_lockpicks INTEGER DEFAULT 0", "has_hacker_software INTEGER DEFAULT 0", "current_bet INTEGER DEFAULT 100"
         ]
         for col in columns:
             try: await db.execute(f"ALTER TABLE players ADD COLUMN {col}")
@@ -60,7 +60,7 @@ async def init_db():
         except aiosqlite.OperationalError: pass
 
         await db.execute("INSERT OR IGNORE INTO system_state (key, value) VALUES ('season', 'Лето')")
-        await db.execute("INSERT OR IGNORE INTO system_state (key, value) VALUES ('event', 'Нет')")
+        await db.execute("INSERT OR IGNORE INTO system_state (key, value) VALUES ('jackpot', '10000')")
 
         edus = [(1, 'Курсы IT (Базовые)', 2000, 1), (2, 'Курсы Электрика', 2000, 1), (3, 'Медицинский колледж', 3000, 1),(4, 'Высшее IT (Бакалавр)', 15000, 2), (5, 'Высшее Экономическое', 15000, 2),(6, 'Высшее Медицинское', 25000, 3), (7, 'Высшее Инженерное', 20000, 3),(8, 'Магистратура', 40000, 4), (9, 'MBA (Бизнес)', 80000, 4),(10, 'Аспирантура', 150000, 5), (11, 'Докторантура / PhD', 300000, 6)]
         for e in edus: await db.execute("INSERT OR REPLACE INTO educations VALUES (?,?,?,?)", e)
