@@ -17,6 +17,7 @@ async def _render_jobs_menu(target, page):
     player = await get_player(target.from_user.id)
     if not player: return
     
+    # Если игрок уже работает
     if player[4] > 0:
         text = f"💼 **Твоя текущая работа**\nЗарплата: {player[4]} монет/цикл."
         kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -25,10 +26,12 @@ async def _render_jobs_menu(target, page):
         ])
         if isinstance(target, Message):
             await target.answer(text, parse_mode="Markdown", reply_markup=kb)
+            await target.answer("Навигация:", reply_markup=section_menu())
         else:
             await target.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
         return
 
+    # Если безработный — показываем вакансии
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT id, title, salary, required_education, required_property FROM jobs") as cur:
             jobs = await cur.fetchall()
@@ -54,7 +57,7 @@ async def _render_jobs_menu(target, page):
 
     if isinstance(target, Message):
         await target.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-        await target.answer("Выбери действие:", reply_markup=section_menu())
+        await target.answer("Навигация:", reply_markup=section_menu())
     else:
         await target.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -64,7 +67,7 @@ async def jobs_page(callback: CallbackQuery):
     await _render_jobs_menu(callback, page)
     await callback.answer()
 
-# --- ПОДРАБОТКИ (без алертов, с редактированием) ---
+# --- ПОДРАБОТКИ ---
 @router.callback_query(F.data.startswith("side_page_"))
 async def show_side_jobs(callback: CallbackQuery):
     page = int(callback.data.split("_")[2])
@@ -72,7 +75,11 @@ async def show_side_jobs(callback: CallbackQuery):
     edu, prop = player[7], player[6]
     
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT id, title, min_earning, max_earning, cooldown_minutes, required_education, required_property, (SELECT last_done FROM side_jobs_cooldown WHERE user_id=? AND side_job_id=side_jobs.id) FROM side_jobs ORDER BY min_earning ASC", (callback.from_user.id,)) as cur:
+        async with db.execute("""
+            SELECT id, title, min_earning, max_earning, cooldown_minutes, required_education, required_property, 
+            (SELECT last_done FROM side_jobs_cooldown WHERE user_id=? AND side_job_id=side_jobs.id) 
+            FROM side_jobs ORDER BY min_earning ASC
+        """, (callback.from_user.id,)) as cur:
             jobs = await cur.fetchall()
     
     start = page * PAGE_SIZE
@@ -116,7 +123,7 @@ async def do_side_job(callback: CallbackQuery):
     player = await get_player(callback.from_user.id)
     
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT title, min_earning, max_earning, cooldown_minutes FROM side_jobs WHERE id=?", (job_id,)) as cur:
+        async with db.execute("SELECT title, min_earning, max_earning FROM side_jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
         
         earnings = random.randint(job[1], job[2])
@@ -124,19 +131,17 @@ async def do_side_job(callback: CallbackQuery):
         await db.execute("INSERT OR REPLACE INTO side_jobs_cooldown (user_id, side_job_id, last_done) VALUES (?, ?, CURRENT_TIMESTAMP)", (callback.from_user.id, job_id))
         await db.commit()
     
-    # Просто перерисовываем меню, без алерта
+    # Показываем короткое всплывающее уведомление и обновляем меню (без кнопки ОК)
+    await callback.answer(f"💪 {job[0]}: заработал {earnings} монет!")
     await show_side_jobs(callback)
-    # И шлем короткое уведомление снизу отдельным сообщением (можно редактировать, но это баг телеграма - edit нельзя без answer)
-    # Вместо этого можно сделать так, чтобы в тексте было видно "последний заработок"
-    await callback.answer()
 
-# --- ОСТАЛЬНОЕ (уволиться, устроиться) ---
+# --- ОСТАЛЬНЫЕ ДЕЙСТВИЯ ---
 @router.callback_query(F.data == "quit_job")
 async def quit_job(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE players SET job_salary = 0 WHERE user_id=?", (callback.from_user.id,))
         await db.commit()
-    await callback.message.edit_text("❌ Ты уволился.")
+    await callback.message.edit_text("❌ Ты уволился. Нажми «💼 Работа» в меню, чтобы найти новую!")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("job_"))
@@ -147,10 +152,21 @@ async def take_job_callback(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT title, salary, required_education, required_property FROM jobs WHERE id=?", (job_id,)) as cur:
             job = await cur.fetchone()
-        if player[7] < job[2] or player[6] < job[3]:
-            await callback.answer("Не хватает требований!", show_alert=True)
+            
+        if not job:
+            await callback.answer("Вакансия не найдена.", show_alert=True)
             return
+            
+        if player[7] < job[2]:
+            await callback.answer("Не хватает образования!", show_alert=True)
+            return
+        if player[6] < job[3]:
+            await callback.answer("Жильё слишком плохое для этой должности!", show_alert=True)
+            return
+            
         await db.execute("UPDATE players SET job_salary=? WHERE user_id=?", (job[1], callback.from_user.id))
         await db.commit()
-    await callback.message.edit_text(f"✅ Работа: **{job[0]}**!")
+    
+    # ТЕПЕРЬ ЗДЕСЬ ЕСТЬ parse_mode="Markdown" - звездочки исчезнут
+    await callback.message.edit_text(f"✅ Ты устроился на работу: **{job[0]}**!", parse_mode="Markdown")
     await callback.answer("Успешно!")
