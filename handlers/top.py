@@ -9,14 +9,14 @@ router = Router()
 async def show_top(message: Message):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
-            # Берем только тех, у кого есть имя и баланс больше нуля
             async with db.execute("SELECT COALESCE(username, 'Игрок') as name, COALESCE(balance, 0) FROM players WHERE balance IS NOT NULL ORDER BY balance DESC LIMIT 5") as cur:
                 rich = await cur.fetchall()
                 
-            async with db.execute("SELECT COALESCE(username, 'Игрок') as name, COALESCE(business_level, 1) FROM players WHERE business_id > 0 ORDER BY business_level DESC LIMIT 5") as cur:
+            # Ищем топ по количеству бизнесов
+            sql = "SELECT COALESCE(p.username, 'Игрок') as name, COUNT(pb.id) as b_count FROM players p JOIN player_businesses pb ON p.user_id = pb.user_id GROUP BY p.user_id ORDER BY b_count DESC LIMIT 5"
+            async with db.execute(sql) as cur:
                 biz = await cur.fetchall()
 
-        # Используем HTML вместо Markdown, чтобы символы '_' в никах не ломали текст
         text = "🏆 <b>Зал Славы</b>\n\n"
         
         text += "💰 <b>Самые богатые:</b>\n"
@@ -27,11 +27,11 @@ async def show_top(message: Message):
         else:
             text += "Пока нет данных.\n"
             
-        text += "\n🏢 <b>Лучшие бизнесмены:</b>\n"
+        text += "\n🏢 <b>Лучшие бизнесмены (по кол-ву):</b>\n"
         if biz:
             for i, b in enumerate(biz, 1):
                 name = f"@{b[0]}" if b[0] not in ["Игрок", "player", "None", "none"] else str(b[0])
-                text += f"{i}. {name} — Уровень {b[1]}\n"
+                text += f"{i}. {name} — Бизнесов: {b[1]}\n"
         else:
             text += "Пока нет бизнесов.\n"
             
