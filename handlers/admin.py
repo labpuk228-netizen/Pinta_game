@@ -1,10 +1,19 @@
 import aiosqlite
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from config import SECRET_ADMIN_CODE
-from database import DB_PATH
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from config import SECRET_ADMIN_CODE, ADMIN_ID
+from database import DB_PATH, get_player
+from keyboards import admin_menu, main_menu
 
 router = Router()
+
+class AdminStates(StatesGroup):
+    waiting_broadcast = State()
+    waiting_player_id = State()
+    waiting_amount = State()
+    waiting_reply_ticket = State()
 
 async def is_admin(user_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -16,113 +25,79 @@ async def admin_entry(message: Message):
     if not await is_admin(message.from_user.id):
         await message.answer("⛔ Доступ запрещён.")
         return
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="adm_stats")],
-        [InlineKeyboardButton(text="👥 Игроки", callback_data="adm_players_0")],
-        [InlineKeyboardButton(text="💸 Управление курсами", callback_data="adm_rates")],
-        [InlineKeyboardButton(text="⚙️ Тест-цикл", callback_data="adm_run_cycle")]
-    ])
-    await message.answer("🛠 **Админ-панель**\n\nВыбери раздел:", parse_mode="Markdown", reply_markup=kb)
+    await message.answer("🛡 **Админ-панель активирована**", reply_markup=admin_menu())
 
-@router.callback_query(F.data == "adm_stats")
-async def admin_stats(callback: CallbackQuery):
-    if not await is_admin(callback.from_user.id): return
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM players") as cur:
-            total = (await cur.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM players WHERE last_online > datetime('now','-1 day')") as cur:
-            online_24 = (await cur.fetchone())[0]
-        async with db.execute("SELECT SUM(balance) FROM players") as cur:
-            total_money = (await cur.fetchone())[0] or 0
-            
-    text = (
-        f"📊 **Статистика мира**\n\n"
-        f"👥 Всего игроков: {total}\n"
-        f"🟢 Активны за 24ч: {online_24}\n"
-        f"💰 Всего монет в экономике: {total_money}"
-    )
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="adm_back")]]))
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("adm_players_"))
-async def admin_players(callback: CallbackQuery):
-    if not await is_admin(callback.from_user.id): return
-    page = int(callback.data.split("_")[2])
-    limit = 5
-    offset = page * limit
-    
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT user_id, username, balance, last_online FROM players ORDER BY last_online DESC LIMIT ? OFFSET ?", (limit, offset)) as cur:
-            players = await cur.fetchall()
-        async with db.execute("SELECT COUNT(*) FROM players") as cur:
-            total = (await cur.fetchone())[0]
-            
-    text = f"👥 **Игроки** (стр. {page+1}):\n\n"
-    for p in players:
-        text += f"ID: `{p[0]}` | @{p[1]} | 💰 {p[2]}\nБыл: {p[3]}\n\n"
-    
-    kb = []
-    nav = []
-    if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"adm_players_{page-1}"))
-    if offset + limit < total: nav.append(InlineKeyboardButton(text="➡️", callback_data=f"adm_players_{page+1}"))
-    if nav: kb.append(nav)
-    kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="adm_back")])
-    
-    await callback.message.edit_text(text[:4000], parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-    await callback.answer()
-
-@router.callback_query(F.data == "adm_rates")
-async def admin_rates(callback: CallbackQuery):
-    if not await is_admin(callback.from_user.id): return
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT symbol, price FROM crypto_assets") as cur:
-            crypto = await cur.fetchall()
-        async with db.execute("SELECT symbol, price FROM stock_assets") as cur:
-            stocks = await cur.fetchall()
-            
-    text = "💸 **Текущие курсы:**\n\n"
-    for c in crypto: text += f"🪙 {c[0]}: {c[1]:.2f}\n"
-    for s in stocks: text += f"📊 {s[0]}: {s[1]:.2f}\n"
-    
-    text += "\nЧтобы изменить курс, отправь команду:\n`/setprice BTC 750`"
-    
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="adm_back")]]))
-    await callback.answer()
-
-@router.message(F.text.startswith("/setprice "))
-async def set_price(message: Message):
+@router.message(F.text == "🛡 Админ-панель")
+async def admin_panel(message: Message):
     if not await is_admin(message.from_user.id): return
-    try:
-        _, symbol, price_str = message.text.split()
-        price = float(price_str)
-    except:
-        await message.answer("Формат: `/setprice BTC 750`", parse_mode="Markdown")
+    await message.answer("🛠 Выбери действие:", reply_markup=admin_menu())
+
+@router.message(F.text == "📊 Статистика")
+async def admin_stats(message: Message):
+    if not await is_admin(message.from_user.id): return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*), SUM(balance) FROM players") as cur:
+            res = await cur.fetchone()
+    await message.answer(f"📊 **Статистика**\n\n👥 Игроков: {res[0]}\n💰 Монет в экономике: {res[1] or 0}")
+
+# --- РАССЫЛКА ---
+@router.message(F.text == "📢 Рассылка")
+async def admin_broadcast_start(message: Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    await state.set_state(AdminStates.waiting_broadcast)
+    await message.answer("Введи текст для рассылки всем игрокам:")
+
+@router.message(AdminStates.waiting_broadcast)
+async def admin_broadcast_send(message: Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT user_id FROM players") as cur:
+            users = await cur.fetchall()
+            
+    count = 0
+    for u in users:
+        try:
+            await message.bot.send_message(u[0], f"📢 **Объявление:**\n\n{message.text}")
+            count += 1
+        except: pass
+    await message.answer(f"✅ Сообщение отправлено {count} игрокам.")
+    await state.clear()
+
+# --- ЖАЛОБЫ ---
+@router.message(F.text == "📩 Жалобы")
+async def admin_tickets(message: Message):
+    if not await is_admin(message.from_user.id): return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT id, user_id, message FROM support_tickets WHERE status='open'") as cur:
+            tickets = await cur.fetchall()
+            
+    if not tickets:
+        await message.answer("Нет активных жалоб.")
         return
         
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE crypto_assets SET price=? WHERE symbol=?", (price, symbol.upper()))
-        await db.execute("UPDATE stock_assets SET price=? WHERE symbol=?", (price, symbol.upper()))
-        await db.commit()
-    await message.answer(f"✅ Курс {symbol.upper()} изменен на {price}")
+    for t in tickets:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✍️ Ответить", callback_data=f"reply_t_{t[0]}_{t[1]}")]])
+        await message.answer(f"Тикет #{t[0]}\nОт ID: {t[1]}\nТекст: {t[2]}", reply_markup=kb)
 
-@router.callback_query(F.data == "adm_back")
-async def admin_back(callback: CallbackQuery):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="adm_stats")],
-        [InlineKeyboardButton(text="👥 Игроки", callback_data="adm_players_0")],
-        [InlineKeyboardButton(text="💸 Управление курсами", callback_data="adm_rates")],
-        [InlineKeyboardButton(text="⚙️ Тест-цикл", callback_data="adm_run_cycle")]
-    ])
-    await callback.message.edit_text("🛠 **Админ-панель**\n\nВыбери раздел:", parse_mode="Markdown", reply_markup=kb)
+@router.callback_query(F.data.startswith("reply_t_"))
+async def admin_reply_ticket(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.from_user.id): return
+    _, _, tid, uid = callback.data.split("_")
+    await state.update_data(ticket_id=tid, user_id=uid)
+    await state.set_state(AdminStates.waiting_reply_ticket)
+    await callback.message.answer("Введи ответ для игрока:")
     await callback.answer()
 
-@router.callback_query(F.data == "adm_run_cycle")
-async def adm_run_cycle(callback: CallbackQuery):
-    if not await is_admin(callback.from_user.id): return
-    from tasks.scheduler import process_cycle
+@router.message(AdminStates.waiting_reply_ticket)
+async def admin_send_reply(message: Message, state: FSMContext):
+    data = await state.get_data()
     try:
-        await process_cycle()
-        await callback.answer("✅ Пассивный цикл выполнен (зарплаты, налоги, майнинг)!", show_alert=True)
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+        await message.bot.send_message(int(data['user_id']), f"📩 **Ответ поддержки:**\n\n{message.text}")
+        await message.answer("✅ Ответ отправлен.")
+    except:
+        await message.answer("❌ Не удалось отправить (игрок заблокировал бота).")
+        
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE support_tickets SET status='closed' WHERE id=?", (data['ticket_id'],))
+        await db.commit()
+    await state.clear()
