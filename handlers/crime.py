@@ -1,7 +1,7 @@
 import aiosqlite, random
 from datetime import datetime, timedelta
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from database import get_player, DB_PATH, is_in_prison
 from keyboards import crime_menu
@@ -15,23 +15,24 @@ async def crime_hub(message: Message, state: FSMContext):
     
     in_prison, mins = await is_in_prison(message.from_user.id)
     if in_prison:
-        # ВАЖНО: Отправляем меню, чтобы была кнопка "Выйти из тюрьмы"
         await message.answer(
             f"⛓ Ты в тюрьме! Осталось: {mins} мин.\nНажми «⚖️ Выйти из тюрьмы», чтобы внести залог.",
             reply_markup=crime_menu()
         )
         return
         
-    lockpicks = "✅ Есть" if player[25] == 1 else "❌ Нет"
-    hacker_sw = "✅ Есть" if player[26] == 1 else "❌ Нет"
-    sec_status = "✅ Есть" if player[24] == 1 else "❌ Нет"
+    # ИСПРАВЛЕННЫЕ ИНДЕКСЫ
+    lockpicks = "✅ Есть" if player[27] == 1 else "❌ Нет"
+    hacker_sw = "✅ Есть" if player[28] == 1 else "❌ Нет"
+    sec_status = "✅ Есть" if player[26] == 1 else "❌ Нет"
+    rep = player[19] if len(player) > 19 else 100
     
     await message.answer(
         f"🕵️ **Теневой рынок**\n\n"
         f"🛡 Охрана: {sec_status}\n"
         f"🔓 Отмычки: {lockpicks}\n"
         f"💻 Хакерский софт: {hacker_sw}\n"
-        f"🏅 Репутация: {player[17]}\n\n"
+        f"🏅 Репутация: {rep}\n\n"
         f"Выбери действие снизу:", 
         parse_mode="Markdown", reply_markup=crime_menu()
     )
@@ -47,7 +48,7 @@ async def black_market(message: Message):
         [InlineKeyboardButton(text="Купить Хакерский софт (5000💰)", callback_data="crimebuy_hacker")],
         [InlineKeyboardButton(text="Купить Охрану (5000💰)", callback_data="crimebuy_security")]
     ])
-    await message.answer("🛒 **Черный рынок**\n\nЗдесь продаются инструменты для незаконных дел. Без них кражи невозможны!", reply_markup=kb)
+    await message.answer("🛒 **Черный рынок**\n\nЗдесь продаются инструменты для незаконных дел.", reply_markup=kb)
 
 @router.callback_query(F.data.startswith("crimebuy_"))
 async def buy_crime_item(callback: CallbackQuery):
@@ -63,40 +64,36 @@ async def buy_crime_item(callback: CallbackQuery):
         
     async with aiosqlite.connect(DB_PATH) as db:
         if item == "lockpicks":
-            if player[25] == 1: return await callback.message.answer("✅ У тебя уже есть отмычки.")
+            if player[27] == 1: return await callback.message.answer("✅ У тебя уже есть отмычки.")
             await db.execute("UPDATE players SET balance = balance - ?, has_lockpicks = 1 WHERE user_id=?", (cost, callback.from_user.id))
             text = "🔓 Куплены отмычки!"
         elif item == "hacker":
-            if player[26] == 1: return await callback.message.answer("✅ У тебя уже есть хакерский софт.")
+            if player[28] == 1: return await callback.message.answer("✅ У тебя уже есть хакерский софт.")
             await db.execute("UPDATE players SET balance = balance - ?, has_hacker_software = 1 WHERE user_id=?", (cost, callback.from_user.id))
             text = "💻 Куплен хакерский софт!"
         elif item == "security":
-            if player[24] == 1: return await callback.message.answer("✅ У тебя уже есть охрана.")
+            if player[26] == 1: return await callback.message.answer("✅ У тебя уже есть охрана.")
             await db.execute("UPDATE players SET balance = balance - ?, has_security = 1 WHERE user_id=?", (cost, callback.from_user.id))
             text = "🛡 Охрана нанята!"
             
         await db.commit()
-    await callback.message.edit_text(text)
+    await callback.message.answer(text)
     await callback.answer()
 
 @router.message(F.text.contains("Ограбить игрока"))
 async def try_rob(message: Message):
     in_prison, mins = await is_in_prison(message.from_user.id)
-    if in_prison:
-        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
-        return
-        
+    if in_prison: return await message.answer(f"⛓ Ты в тюрьме!")
+    
     player = await get_player(message.from_user.id)
-    if player[25] == 0:
-        await message.answer("❌ У тебя нет отмычек! Купи их на Черном рынке.")
-        return
+    if player[27] == 0:
+        return await message.answer("❌ У тебя нет отмычек! Купи их на Черном рынке.")
         
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT user_id, balance, has_security FROM players WHERE user_id != ? AND balance > 100", (message.from_user.id,)) as cur:
             victims = await cur.fetchall()
     if not victims:
-        await message.answer("В городе нет подходящих целей.")
-        return
+        return await message.answer("В городе нет подходящих целей.")
         
     victim_id, victim_balance, victim_sec = random.choice(victims)
     success_chance = 0.2 if victim_sec == 1 else 0.6
@@ -113,7 +110,7 @@ async def try_rob(message: Message):
             prison_until = (datetime.utcnow() + timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
             await db.execute("UPDATE players SET in_prison_until=?, reputation = reputation - 15, has_lockpicks = 0 WHERE user_id=?", (prison_until, message.from_user.id))
             if victim_sec == 1:
-                try: await message.bot.send_message(victim_id, "🛡 Твоя охрана задержала вора! Он отправлен в тюрьму.")
+                try: await message.bot.send_message(victim_id, "🛡 Твоя охрана задержала вора!")
                 except: pass
             await message.answer("🚔 Провал! Тебя поймали. Тюрьма на 15 минут. (Репутация -15, Отмычки изъяты)")
         await db.commit()
@@ -121,9 +118,7 @@ async def try_rob(message: Message):
 @router.message(F.text.contains("Ограбить NPC"))
 async def rob_npc(message: Message):
     in_prison, mins = await is_in_prison(message.from_user.id)
-    if in_prison:
-        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
-        return
+    if in_prison: return await message.answer(f"⛓ Ты в тюрьме!")
         
     async with aiosqlite.connect(DB_PATH) as db:
         if random.random() < 0.7: 
@@ -140,20 +135,17 @@ async def rob_npc(message: Message):
 @router.message(F.text.contains("Взломать банк"))
 async def hack_bank(message: Message):
     in_prison, mins = await is_in_prison(message.from_user.id)
-    if in_prison:
-        await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
-        return
+    if in_prison: return await message.answer(f"⛓ Ты в тюрьме!")
         
     player = await get_player(message.from_user.id)
-    if player[26] == 0:
-        await message.answer("❌ У тебя нет хакерского софта! Купи его на Черном рынке.")
-        return
+    if player[28] == 0:
+        return await message.answer("❌ У тебя нет хакерского софта! Купи его на Черном рынке.")
         
     async with aiosqlite.connect(DB_PATH) as db:
         if random.random() < 0.3: 
             stolen = random.randint(10000, 30000)
             await db.execute("UPDATE players SET balance = balance + ?, reputation = reputation - 20 WHERE user_id=?", (stolen, message.from_user.id))
-            text = f"💻 **ДЖЕКПОТ!** Ты взломал банк и перевел **{stolen}** монет на свой счет! (Репутация -20)"
+            text = f"💻 **ДЖЕКПОТ!** Ты взломал банк и перевел **{stolen}** монет! (Репутация -20)"
         else:
             prison_until = (datetime.utcnow() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
             await db.execute("UPDATE players SET in_prison_until=?, reputation = reputation - 30, has_hacker_software = 0 WHERE user_id=?", (prison_until, message.from_user.id))
@@ -164,31 +156,18 @@ async def hack_bank(message: Message):
 @router.message(F.text.contains("Выйти из тюрьмы"))
 async def out_of_jail(message: Message):
     player = await get_player(message.from_user.id)
-    if not player[18] or player[18] == "None":
-        await message.answer("Ты не в тюрьме.")
-        return
-        
-    # Проверяем, истек ли срок
-    try:
-        prison_time = datetime.strptime(player[18], "%Y-%m-%d %H:%M:%S")
-        if datetime.utcnow() >= prison_time:
-            async with aiosqlite.connect(DB_PATH) as db:
-                await db.execute("UPDATE players SET in_prison_until=NULL WHERE user_id=?", (message.from_user.id,))
-                await db.commit()
-            await message.answer("⏳ Твой срок уже истек, ты свободен!")
-            return
-    except: pass
+    if not player[20]: # ИСПРАВЛЕННЫЙ ИНДЕКС
+        return await message.answer("Ты не в тюрьме.")
         
     if player[3] < 2000:
-        await message.answer("❌ Залог стоит 2000 монет. У тебя нет таких денег, жди конца срока.")
-        return
+        return await message.answer("❌ Залог стоит 2000 монет.")
         
     if random.random() < 0.3:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE players SET balance = balance - 2000 WHERE user_id=?", (message.from_user.id,))
             await db.commit()
-        await message.answer("🚨 Адвокат взял деньги, но полиция отказалась брать взятку! Деньги потеряны, жди срок.")
-        return
+        return await message.answer("🚨 Адвокат взял деньги, но полиция отказалась брать взятку!")
+        
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE players SET balance = balance - 2000, in_prison_until=NULL WHERE user_id=?", (message.from_user.id,))
         await db.commit()
