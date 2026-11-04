@@ -9,12 +9,17 @@ router = Router()
 async def show_top(message: Message):
     try:
         async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT COALESCE(username, 'Игрок') as name, COALESCE(balance, 0) FROM players WHERE balance IS NOT NULL ORDER BY balance DESC LIMIT 5") as cur:
+            # Топ по балансу
+            sql_rich = "SELECT COALESCE(username, 'Игрок') as name, COALESCE(balance, 0) "
+            sql_rich += "FROM players WHERE balance IS NOT NULL ORDER BY balance DESC LIMIT 5"
+            async with db.execute(sql_rich) as cur:
                 rich = await cur.fetchall()
                 
-            # Ищем топ по количеству бизнесов
-            sql = "SELECT COALESCE(p.username, 'Игрок') as name, COUNT(pb.id) as b_count FROM players p JOIN player_businesses pb ON p.user_id = pb.user_id GROUP BY p.user_id ORDER BY b_count DESC LIMIT 5"
-            async with db.execute(sql) as cur:
+            # Топ по количеству бизнесов
+            sql_biz = "SELECT COALESCE(p.username, 'Игрок') as name, COUNT(pb.id) as b_count "
+            sql_biz += "FROM players p JOIN player_businesses pb ON p.user_id = pb.user_id "
+            sql_biz += "GROUP BY p.user_id ORDER BY b_count DESC LIMIT 5"
+            async with db.execute(sql_biz) as cur:
                 biz = await cur.fetchall()
 
         text = "🏆 <b>Зал Славы</b>\n\n"
