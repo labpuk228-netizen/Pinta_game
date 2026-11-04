@@ -111,7 +111,7 @@ async def sell_part(callback: CallbackQuery):
     try: await callback.message.delete()
     except: pass
 
-    @router.message(F.text.contains("Сменить монету"))
+@router.message(F.text.contains("Сменить монету"))
 async def change_coin_menu(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Bitcoin (BTC)", callback_data="setcoin_BTC")],
