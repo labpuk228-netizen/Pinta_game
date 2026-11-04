@@ -57,7 +57,6 @@ async def s_p(c: CallbackQuery):
     await c.message.answer(f"✅ Продано {r[3]} за {pr}!")
     try: await c.message.delete()
     except: pass
-
     @router.message(F.text.contains("Сменить монету"))
 async def c_coin(m: Message):
     k = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="BTC", callback_data="coin_BTC")],[InlineKeyboardButton(text="ETH", callback_data="coin_ETH")],[InlineKeyboardButton(text="DOGE", callback_data="coin_DOGE")]])
@@ -152,8 +151,7 @@ async def d_crt(c: CallbackQuery):
         await db.commit()
     await c.message.answer("✅ Создана!")
     await _r_rigs(c)
-
-async def _r_rig(t, rid):
+    async def _r_rig(t, rid):
     sql = "SELECT r.name, p_mb.name, p_mb.slots, p_psu.name, p_psu.wattage, p_cpu.name, p_cpu.hashrate FROM mining_rigs r LEFT JOIN mining_shop p_mb ON r.mb_id = p_mb.id LEFT JOIN mining_shop p_psu ON r.psu_id = p_psu.id LEFT JOIN mining_shop p_cpu ON r.cpu_id = p_cpu.id WHERE r.id=?"
     gsql = "SELECT SUM(sp.wattage * rg.amount), SUM(sp.hashrate * rg.amount), SUM(rg.amount) FROM mining_rig_gpus rg JOIN mining_shop sp ON rg.part_id = sp.id WHERE rg.rig_id=?"
     async with aiosqlite.connect(DB_PATH) as db:
