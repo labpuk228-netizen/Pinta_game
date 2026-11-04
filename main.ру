@@ -3,10 +3,7 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from database import init_db
-
-# Импортируем все модули строго в одну строку, чтобы избежать ошибок с отступами
-from handlers import start, common, profile, jobs, education, property, business, mining, market, casino, social, crime, top, faq, checkup, transfers
-
+from handlers import start, common, profile, jobs, education, property, business, mining, market, casino, social, crime, top, faq, transfers, admin, support, npc
 from tasks.scheduler import start_scheduler
 
 async def health(request): return web.Response(text="OK")
@@ -25,14 +22,15 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
-    routers = [start, common, profile, jobs, education, property, business, mining, market, casino, social, crime, top, faq, checkup, transfers]
+    # Подключаем все роутеры (кроме checkup)
+    routers = [start, common, profile, jobs, education, property, business, mining, market, casino, social, crime, top, faq, transfers, admin, support, npc]
     
     for r in routers:
         dp.include_router(r.router)
 
     start_scheduler()
     await start_web_server()
-    print("Бот Пихта запущен (Финальная сборка)...")
+    print("Бот Пихта запущен (Живой мир + Админка)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
