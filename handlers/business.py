@@ -22,7 +22,18 @@ async def show_biz_shop(message: Message):
     for b in bizs:
         text += f"**{b[1]}**\nЦена: {b[2]} | Доход: +{b[3]} | Обслуживание: -{b[4]}\n\n"
         kb.append([InlineKeyboardButton(text=f"Купить: {b[1]} ({b[2]}💰)", callback_data=f"buybiz_{b[0]}")])
+    
+    kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_biz")])
     await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+@router.callback_query(F.data == "back_to_biz")
+async def back_to_biz(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    await callback.message.answer("🏢 **Бизнесы**\nВыбери действие снизу:", reply_markup=biz_menu())
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("buybiz_"))
 async def buy_biz(callback: CallbackQuery):
@@ -34,7 +45,6 @@ async def buy_biz(callback: CallbackQuery):
             biz = await cur.fetchone()
             
         if player[3] < biz[1]:
-            # Вместо алерта просто шлем текст
             await callback.message.answer(f"❌ Недостаточно средств! Нужно {biz[1]} монет.")
             return
             
@@ -45,23 +55,35 @@ async def buy_biz(callback: CallbackQuery):
     await callback.message.answer(f"🏢 Куплен бизнес: **{biz[0]}**! Он добавлен в твой список.", parse_mode="Markdown")
 
 # --- СПИСОК МОИХ БИЗНЕСОВ ---
-@router.message(F.text.contains("Мои бизнесы"))
-async def my_biz_list(message: Message):
+async def _render_my_biz_list(target, error_msg=""):
+    user_id = target.from_user.id
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT pb.id, b.title, pb.level FROM player_businesses pb JOIN businesses b ON pb.business_id = b.id WHERE pb.user_id=?", (message.from_user.id,)) as cur:
+        async with db.execute("SELECT pb.id, b.title, pb.level FROM player_businesses pb JOIN businesses b ON pb.business_id = b.id WHERE pb.user_id=?", (user_id,)) as cur:
             my_bizs = await cur.fetchall()
             
+    text = ""
+    if error_msg:
+        text += f"❌ {error_msg}\n\n"
+        
     if not my_bizs:
-        await message.answer("У тебя пока нет бизнесов. Купи их во вкладке 'Купить бизнес'.")
-        return
+        text += "У тебя пока нет бизнесов. Купи их во вкладке 'Купить бизнес'."
+        kb = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_biz")]]
+    else:
+        text += "🏢 **Твои бизнесы:**\n(Выбери, чтобы управлять)\n\n"
+        kb = []
+        for b in my_bizs:
+            text += f"▪️ {b[1]} (Ур. {b[2]})\n"
+            kb.append([InlineKeyboardButton(text=f"⚙️ Управлять: {b[1]} (Ур.{b[2]})", callback_data=f"managebiz_{b[0]}")])
+        kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_biz")])
         
-    text = "🏢 **Твои бизнесы:**\n(Выбери, чтобы управлять)\n\n"
-    kb = []
-    for b in my_bizs:
-        text += f"▪️ {b[1]} (Ур. {b[2]})\n"
-        kb.append([InlineKeyboardButton(text=f"⚙️ Управлять: {b[1]} (Ур.{b[2]})", callback_data=f"managebiz_{b[0]}")])
-        
-    await message.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    if isinstance(target, CallbackQuery):
+        await target.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    else:
+        await target.answer(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+@router.message(F.text.contains("Мои бизнесы"))
+async def my_biz_list(message: Message):
+    await _render_my_biz_list(message)
 
 # --- УПРАВЛЕНИЕ БИЗНЕСОМ ---
 async def _render_biz_manage(target, pb_id, error_msg=""):
@@ -101,7 +123,7 @@ async def _render_biz_manage(target, pb_id, error_msg=""):
 
     upg_cost = base_buy * lvl * 3
     hire_cost = 1000 * (staff + 1)
-    sell_price = int(base_buy * 0.5 * lvl) # Продажа: 50% от стоимости + бонус за уровни
+    sell_price = int(base_buy * 0.5 * lvl)
     
     kb = []
     if lvl < 5: kb.append([InlineKeyboardButton(text=f"Улучшить до Ур.{lvl+1} ({upg_cost}💰)", callback_data=f"b_up_{pb_id}")])
@@ -127,10 +149,7 @@ async def manage_biz(callback: CallbackQuery):
 
 @router.callback_query(F.data == "back_mybiz")
 async def back_mybiz(callback: CallbackQuery):
-    fake_msg = Message(message_id=callback.message.message_id, date=callback.message.date, chat=callback.message.chat, from_user=callback.from_user, text="Мои бизнесы")
-    await my_biz_list(fake_msg)
-    try: await callback.message.delete()
-    except: pass
+    await _render_my_biz_list(callback)
     await callback.answer()
 
 # --- ДЕЙСТВИЯ ---
@@ -201,11 +220,7 @@ async def b_sl(callback: CallbackQuery):
         await db.execute("DELETE FROM player_businesses WHERE id=?", (pb_id,))
         await db.commit()
         
-    fake_msg = Message(message_id=callback.message.message_id, date=callback.message.date, chat=callback.message.chat, from_user=callback.from_user, text="Мои бизнесы")
-    await my_biz_list(fake_msg)
-    try: await callback.message.delete()
-    except: pass
-    await callback.message.answer(f"💸 Ты продал **{title}** за {sell_price} монет!", parse_mode="Markdown")
+    await _render_my_biz_list(callback, error_msg=f"Ты продал {title} за {sell_price} монет!")
 
 @router.callback_query(F.data == "noop")
 async def noop(callback: CallbackQuery):
