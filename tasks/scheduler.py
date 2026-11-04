@@ -52,4 +52,52 @@ async def process_cycle():
         await db.execute("UPDATE players SET reputation = MIN(reputation + 1, 100) WHERE job_salary > 0")
         await db.commit()
 
-# (Остальные функции change_season, random_events, update_prices, start_scheduler остаются без изменений)
+async def change_season():
+    async with aiosqlite.connect(DB_PATH) as db:
+        seasons = ["Зима", "Весна", "Лето", "Осень"]
+        new_season = random.choice(seasons)
+        await db.execute("UPDATE system_state SET value=? WHERE key='season'", (new_season,))
+        await db.commit()
+        async with db.execute("SELECT user_id FROM players") as cur:
+            users = await cur.fetchall()
+        for u in users:
+            try: await bot.send_message(u[0], f"🍂 **Сменился сезон.** Наступила **{new_season}**.\nЦены на аренду изменились!")
+            except: pass
+
+async def random_events():
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT user_id FROM players WHERE balance > 0") as cur:
+            users = await cur.fetchall()
+        if not users: return
+        user_id = random.choice(users)[0]
+        events = [
+            ("good", 500, "💰 Ты нашел на улице кошелек и там было 500 монет!"),
+            ("good", 1000, "🎁 Прохожий подарил тебе 1000 монет просто так!"),
+            ("bad", -300, "💸 Налоговая нашла ошибку. Штраф: 300 монет."),
+            ("bad", -200, "😡 У тебя украли кошелек в толпе. Потеряно 200 монет.")
+        ]
+        _, amount, text = random.choice(events)
+        if amount != 0:
+            await db.execute("UPDATE players SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+            await db.commit()
+        try: await bot.send_message(user_id, f"🎲 **Случайное событие!**\n\n{text}")
+        except: pass
+
+async def update_prices():
+    async with aiosqlite.connect(DB_PATH) as db:
+        for table in ["crypto_assets", "stock_assets"]:
+            async with db.execute(f"SELECT symbol, price, volatility FROM {table}") as cur:
+                assets = await cur.fetchall()
+            for a in assets:
+                change = a[1] * random.uniform(-a[2], a[2])
+                new_price = max(0.01, a[1] + change)
+                await db.execute(f"UPDATE {table} SET price=? WHERE symbol=?", (new_price, a[0]))
+        await db.commit()
+
+# ВОТ ТА САМАЯ ФУНКЦИЯ, КОТОРАЯ ПОТЕРЯЛАСЬ
+def start_scheduler():
+    scheduler.add_job(process_cycle, "interval", minutes=5)
+    scheduler.add_job(update_prices, "interval", minutes=5)
+    scheduler.add_job(random_events, "interval", minutes=15)
+    scheduler.add_job(change_season, "interval", hours=24)
+    scheduler.start()
