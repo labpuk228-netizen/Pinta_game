@@ -26,6 +26,17 @@ async def init_db():
         CREATE TABLE IF NOT EXISTS properties (id INTEGER PRIMARY KEY, title TEXT, rent INTEGER, buy INTEGER, comfort INTEGER);
         CREATE TABLE IF NOT EXISTS educations (id INTEGER PRIMARY KEY, title TEXT, cost INTEGER, level INTEGER);
         CREATE TABLE IF NOT EXISTS businesses (id INTEGER PRIMARY KEY, title TEXT, buy INTEGER, income INTEGER, upkeep INTEGER);
+        
+        -- НОВАЯ ТАБЛИЦА ДЛЯ МНОЖЕСТВЕННЫХ БИЗНЕСОВ
+        CREATE TABLE IF NOT EXISTS player_businesses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            business_id INTEGER,
+            level INTEGER DEFAULT 1,
+            staff INTEGER DEFAULT 0,
+            boost TIMESTAMP
+        );
+        
         CREATE TABLE IF NOT EXISTS side_jobs (
             id INTEGER PRIMARY KEY, title TEXT, min_e INTEGER, max_e INTEGER, 
             cooldown INTEGER, req_edu INTEGER, req_prop INTEGER, no_cooldown_edu INTEGER DEFAULT 99
@@ -49,7 +60,16 @@ async def init_db():
         CREATE TABLE IF NOT EXISTS admins (user_id INTEGER PRIMARY KEY);
         """)
         
-        # Миграции
+        # Миграция старых бизнесов в новую таблицу
+        try:
+            async with db.execute("SELECT user_id, business_id, business_level, business_staff, business_boost FROM players WHERE business_id > 0") as cur:
+                old_biz = await cur.fetchall()
+            for b in old_biz:
+                await db.execute("INSERT INTO player_businesses (user_id, business_id, level, staff, boost) VALUES (?, ?, ?, ?, ?)", (b[0], b[1], b[2], b[3], b[4]))
+                await db.execute("UPDATE players SET business_id=0 WHERE user_id=?", (b[0],))
+        except: pass
+
+        # Миграции колонок (оставляем для совместимости)
         columns = [
             "property_id INTEGER DEFAULT 0", "education_level INTEGER DEFAULT 0", "business_id INTEGER DEFAULT 0", 
             "business_level INTEGER DEFAULT 1", "business_staff INTEGER DEFAULT 0", "business_boost TIMESTAMP",
@@ -66,7 +86,6 @@ async def init_db():
 
         try: await db.execute("ALTER TABLE side_jobs ADD COLUMN no_cooldown_edu INTEGER DEFAULT 99")
         except aiosqlite.OperationalError: pass
-        
         try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN mb_cond REAL DEFAULT 100.0")
         except aiosqlite.OperationalError: pass
         try: await db.execute("ALTER TABLE mining_rigs ADD COLUMN psu_cond REAL DEFAULT 100.0")
@@ -81,6 +100,7 @@ async def init_db():
         await db.execute("INSERT OR IGNORE INTO system_state (key, value) VALUES ('season', 'Лето')")
         await db.execute("INSERT OR IGNORE INTO system_state (key, value) VALUES ('jackpot', '10000')")
 
+        # Заполнение магазинов
         edus = [(1, 'Курсы IT (Базовые)', 2000, 1), (2, 'Курсы Электрика', 2000, 1), (3, 'Медицинский колледж', 3000, 1),(4, 'Высшее IT (Бакалавр)', 15000, 2), (5, 'Высшее Экономическое', 15000, 2),(6, 'Высшее Медицинское', 25000, 3), (7, 'Высшее Инженерное', 20000, 3),(8, 'Магистратура', 40000, 4), (9, 'MBA (Бизнес)', 80000, 4),(10, 'Аспирантура', 150000, 5), (11, 'Докторантура / PhD', 300000, 6)]
         for e in edus: await db.execute("INSERT OR REPLACE INTO educations VALUES (?,?,?,?)", e)
 
