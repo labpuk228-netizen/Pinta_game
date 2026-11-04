@@ -14,34 +14,7 @@ def main_menu(is_admin=False):
         kb.append([KeyboardButton(text="🛡 Админ-панель")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-def admin_menu():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="👥 Игроки"), KeyboardButton(text="📈 Биржа")],
-        [KeyboardButton(text="💰 Экономика"), KeyboardButton(text="🌍 Ивенты")],
-        [KeyboardButton(text="📢 Рассылка"), KeyboardButton(text="📩 Жалобы")],
-        [KeyboardButton(text="⬅️ Назад в меню")]
-    ], resize_keyboard=True)
-
-def admin_players_menu():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="💰 Выдать монеты"), KeyboardButton(text="🚫 Забанить")],
-        [KeyboardButton(text="⬅️ В админку")]
-    ], resize_keyboard=True)
-
-def admin_economy_menu():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="📉 Изменить цены бизнесов")],
-        [KeyboardButton(text="⬅️ В админку")]
-    ], resize_keyboard=True)
-
-def admin_events_menu():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🚀 Крипто-бум (+50% к ценам)")],
-        [KeyboardButton(text="📉 Кризис (-30% к ценам)")],
-        [KeyboardButton(text="🔄 Сбросить экономику")],
-        [KeyboardButton(text="⬅️ В админку")]
-    ], resize_keyboard=True)
-
+def admin_players_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙 Назад в админку")]], resize_keyboard=True)
 def job_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📋 Вакансии"), KeyboardButton(text="🛠 Подработки")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
 def prop_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🏠 Моё жильё"), KeyboardButton(text="🏘 Вся недвижимость")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
 def biz_menu(): return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🏢 Мои бизнесы"), KeyboardButton(text="💼 Купить бизнес")],[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True)
