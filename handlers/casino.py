@@ -18,9 +18,11 @@ async def casino_hub(message: Message, state: FSMContext):
         return
         
     player = await get_player(message.from_user.id)
+    bet = player[29] if len(player) > 29 else 100 
+    
     await message.answer(
         f"🎲 **Добро пожаловать в казино!**\n\n"
-        f"Твоя текущая ставка: **{player[27]}** монет.\n"
+        f"Твоя текущая ставка: **{bet}** монет.\n"
         f"Нажми «💵 Изменить ставку», чтобы поменять сумму.", 
         parse_mode="Markdown", reply_markup=casino_menu()
     )
@@ -68,7 +70,7 @@ async def roulette_menu(message: Message):
 @router.callback_query(F.data.startswith("roul_"))
 async def play_roulette(callback: CallbackQuery):
     player = await get_player(callback.from_user.id)
-    bet = player[27]
+    bet = player[29] if len(player) > 29 else 100
     
     if player[3] < bet:
         await callback.message.edit_text("❌ Недостаточно монет для этой ставки! Измени ставку.")
@@ -110,16 +112,17 @@ async def dice_menu(message: Message):
         await message.answer(f"⛓ Ты в тюрьме! Осталось: {mins} мин.")
         return
     player = await get_player(message.from_user.id)
+    bet = player[29] if len(player) > 29 else 100
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎲 Бросить кубик", callback_data="roll_dice")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="casino_back")]
     ])
-    await message.answer(f"🎲 **Кости**\nТвоя ставка: {player[27]}.\nНажми кнопку, чтобы бросить кубик (выигрыш x2 при 5 или 6):", reply_markup=kb)
+    await message.answer(f"🎲 **Кости**\nТвоя ставка: {bet}.\nНажми кнопку, чтобы бросить кубик (выигрыш x2 при 5 или 6):", reply_markup=kb)
 
 @router.callback_query(F.data == "roll_dice")
 async def play_dice(callback: CallbackQuery):
     player = await get_player(callback.from_user.id)
-    bet = player[27]
+    bet = player[29] if len(player) > 29 else 100
     
     if player[3] < bet:
         await callback.message.edit_text("❌ Недостаточно монет для этой ставки!")
